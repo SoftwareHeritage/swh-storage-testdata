@@ -1,0 +1,29 @@
+Software Heritage storage test data
+===================================
+
+How to recreate the DB dumps
+----------------------------
+
+Periodically you will need to recreate the test data DB dumps, e.g., after a
+change in the DB schema. To that end:
+
+1. you should first ensure that the `softwareheritage-dev` contains the status
+   of the DB that you want to use in tests. You can achieve that by running
+   (all commands are relative to swh-environment/ development root)
+
+        make -C swh-storage/sql/ distclean filldb
+
+2. recreate the DB dumps in this repository
+
+        make -C swh-storage-testdata/ distclean dumpdb
+
+3. check the textual diff of the SQL dump, to ensure it contains the
+   differences you want:
+
+        cd swh-storage-testdata
+        git diff dumps/swh.sql
+
+4. commit and push your changes
+
+        git commit
+        git push
