@@ -100,6 +100,29 @@ CREATE DOMAIN file_perms AS integer;
 
 
 --
+-- Name: unix_path; Type: DOMAIN; Schema: public; Owner: -
+--
+
+CREATE DOMAIN unix_path AS text;
+
+
+--
+-- Name: directory_entry; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE directory_entry AS (
+	dir_id sha1_git,
+	type text,
+	target sha1_git,
+	name unix_path,
+	perms file_perms,
+	atime timestamp with time zone,
+	mtime timestamp with time zone,
+	ctime timestamp with time zone
+);
+
+
+--
 -- Name: revision_type; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -108,13 +131,6 @@ CREATE TYPE revision_type AS ENUM (
     'tar',
     'dsc'
 );
-
-
---
--- Name: unix_path; Type: DOMAIN; Schema: public; Owner: -
---
-
-CREATE DOMAIN unix_path AS text;
 
 
 --
@@ -158,10 +174,119 @@ $$;
 
 
 --
+-- Name: swh_directory_entry_dir_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_directory_entry_dir_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    insert into directory_entry_dir (target, name, perms, atime, mtime, ctime)
+    select t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
+    from tmp_directory_entry_dir t
+    where not exists (
+    select 1
+    from directory_entry_dir i
+    where t.target = i.target and t.name = i.name and t.perms = i.perms and
+       t.atime is not distinct from i.atime and
+       t.mtime is not distinct from i.mtime and
+       t.ctime is not distinct from i.ctime);
+
+    insert into directory_list_dir (entry_id, dir_id)
+    select i.id, t.dir_id
+    from tmp_directory_entry_dir t
+    inner join directory_entry_dir i
+    on t.target = i.target and t.name = i.name and t.perms = i.perms and
+       t.atime is not distinct from i.atime and
+       t.mtime is not distinct from i.mtime and
+       t.ctime is not distinct from i.ctime;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_directory_entry_file_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_directory_entry_file_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    insert into directory_entry_file (target, name, perms, atime, mtime, ctime)
+    select t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
+    from tmp_directory_entry_file t
+    where not exists (
+    select 1
+    from directory_entry_file i
+    where t.target = i.target and t.name = i.name and t.perms = i.perms and
+       t.atime is not distinct from i.atime and
+       t.mtime is not distinct from i.mtime and
+       t.ctime is not distinct from i.ctime);
+
+    insert into directory_list_file (entry_id, dir_id)
+    select i.id, t.dir_id
+    from tmp_directory_entry_file t
+    inner join directory_entry_file i
+    on t.target = i.target and t.name = i.name and t.perms = i.perms and
+       t.atime is not distinct from i.atime and
+       t.mtime is not distinct from i.mtime and
+       t.ctime is not distinct from i.ctime;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_directory_entry_rev_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_directory_entry_rev_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    insert into directory_entry_rev (target, name, perms, atime, mtime, ctime)
+    select t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
+    from tmp_directory_entry_rev t
+    where not exists (
+    select 1
+    from directory_entry_rev i
+    where t.target = i.target and t.name = i.name and t.perms = i.perms and
+       t.atime is not distinct from i.atime and
+       t.mtime is not distinct from i.mtime and
+       t.ctime is not distinct from i.ctime);
+
+    insert into directory_list_rev (entry_id, dir_id)
+    select i.id, t.dir_id
+    from tmp_directory_entry_rev t
+    inner join directory_entry_rev i
+    on t.target = i.target and t.name = i.name and t.perms = i.perms and
+       t.atime is not distinct from i.atime and
+       t.mtime is not distinct from i.mtime and
+       t.ctime is not distinct from i.ctime;
+    return;
+end
+$$;
+
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+-- Name: directory; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE TABLE directory (
+    id sha1_git NOT NULL
+);
+
+
+--
 -- Name: swh_directory_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_directory_missing() RETURNS SETOF sha1_git
+CREATE FUNCTION swh_directory_missing() RETURNS SETOF directory
     LANGUAGE plpgsql
     AS $$
 begin
@@ -169,6 +294,38 @@ begin
 	select id from tmp_directory
 	except
 	select id from directory;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_directory_walk_one(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_directory_walk_one(walked_dir_id sha1_git) RETURNS SETOF directory_entry
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query (
+        select dir_id, 'dir' as type, target, name, perms, atime, mtime, ctime
+	from directory_list_dir l
+	left join directory_entry_dir d
+	on l.entry_id = d.id
+	where l.dir_id = walked_dir_id
+    union
+        select dir_id, 'file' as type, target, name, perms, atime, mtime, ctime
+	from directory_list_file l
+	left join directory_entry_file d
+	on l.entry_id = d.id
+	where l.dir_id = walked_dir_id
+    union
+        select dir_id, 'rev' as type, target, name, perms, atime, mtime, ctime
+	from directory_list_rev l
+	left join directory_entry_rev d
+	on l.entry_id = d.id
+	where l.dir_id = walked_dir_id
+    ) order by name;
     return;
 end
 $$;
@@ -192,9 +349,107 @@ end
 $$;
 
 
-SET default_tablespace = '';
+--
+-- Name: swh_mktemp_dir_entry(regclass); Type: FUNCTION; Schema: public; Owner: -
+--
 
-SET default_with_oids = false;
+CREATE FUNCTION swh_mktemp_dir_entry(tblname regclass) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    execute format('
+	create temporary table tmp_%I
+	    (like %I including defaults, dir_id sha1_git)
+	    on commit drop;
+        alter table tmp_%I drop column id;
+	', tblname, tblname, tblname, tblname);
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_mktemp_revision(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_revision() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    create temporary table tmp_revision (
+        like revision including defaults,
+        author_name text not null default '',
+        author_email text not null default '',
+        committer_name text not null default '',
+        committer_email text not null default ''
+    ) on commit drop;
+    alter table tmp_revision drop column author;
+    alter table tmp_revision drop column committer;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_person_add_from_revision(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_person_add_from_revision() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    with t as (
+        select author_name as name, author_email as email from tmp_revision
+    union
+        select committer_name as name, committer_email as email from tmp_revision
+    ) insert into person (name, email)
+    select distinct name, email from t
+    where not exists (
+        select 1
+	from person p
+	where t.name = p.name and t.email = p.email
+    );
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_revision_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    perform swh_person_add_from_revision();
+
+    insert into revision (id, date, committer_date, type, directory, message, author, committer)
+    select t.id, t.date, t.committer_date, t.type, t.directory, t.message, a.id, c.id
+    from tmp_revision t
+    left join person a on a.name = t.author_name and a.email = t.author_email
+    left join person c on c.name = t.committer_name and c.email = t.committer_email;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_revision_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_missing() RETURNS SETOF sha1_git
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select id from tmp_revision
+	except
+	select id from revision;
+    return;
+end
+$$;
+
 
 --
 -- Name: content; Type: TABLE; Schema: public; Owner: -; Tablespace: 
@@ -218,15 +473,6 @@ CREATE TABLE dbversion (
     version integer NOT NULL,
     release timestamp with time zone,
     description text
-);
-
-
---
--- Name: directory; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE directory (
-    id sha1_git NOT NULL
 );
 
 
@@ -528,8 +774,8 @@ ALTER SEQUENCE origin_id_seq OWNED BY origin.id;
 
 CREATE TABLE person (
     id bigint NOT NULL,
-    name text,
-    email text
+    name text DEFAULT ''::text NOT NULL,
+    email text DEFAULT ''::text NOT NULL
 );
 
 
@@ -630,6 +876,7 @@ CREATE TABLE release (
     id sha1_git NOT NULL,
     revision sha1_git,
     date timestamp with time zone,
+    date_offset integer,
     name text,
     comment text,
     author bigint
@@ -643,7 +890,9 @@ CREATE TABLE release (
 CREATE TABLE revision (
     id sha1_git NOT NULL,
     date timestamp with time zone,
+    date_offset integer,
     committer_date timestamp with time zone,
+    committer_date_offset integer,
     type revision_type NOT NULL,
     directory sha1_git,
     message text,
@@ -746,7 +995,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-13	2015-09-14 18:56:12.634076+02	Work In Progress
+13	2015-09-16 15:02:21.618078+02	Work In Progress
 \.
 
 
@@ -953,7 +1202,7 @@ SELECT pg_catalog.setval('project_id_seq', 1, false);
 -- Data for Name: release; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY release (id, revision, date, name, comment, author) FROM stdin;
+COPY release (id, revision, date, date_offset, name, comment, author) FROM stdin;
 \.
 
 
@@ -961,7 +1210,7 @@ COPY release (id, revision, date, name, comment, author) FROM stdin;
 -- Data for Name: revision; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY revision (id, date, committer_date, type, directory, message, author, committer) FROM stdin;
+COPY revision (id, date, date_offset, committer_date, committer_date_offset, type, directory, message, author, committer) FROM stdin;
 \.
 
 
@@ -1165,11 +1414,31 @@ CREATE UNIQUE INDEX content_sha1_git_idx ON content USING btree (sha1_git);
 
 
 --
--- Name: directory_entry_dir_target_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: directory_entry_dir_target_name_perms_atime_mtime_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
-ALTER TABLE ONLY directory_entry_dir
-    ADD CONSTRAINT directory_entry_dir_target_fkey FOREIGN KEY (target) REFERENCES directory(id) DEFERRABLE INITIALLY DEFERRED;
+CREATE UNIQUE INDEX directory_entry_dir_target_name_perms_atime_mtime_ctime_idx ON directory_entry_dir USING btree (target, name, perms, atime, mtime, ctime);
+
+
+--
+-- Name: directory_entry_file_target_name_perms_atime_mtime_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX directory_entry_file_target_name_perms_atime_mtime_ctime_idx ON directory_entry_file USING btree (target, name, perms, atime, mtime, ctime);
+
+
+--
+-- Name: directory_entry_rev_target_name_perms_atime_mtime_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_atime_mtime_ctime_idx ON directory_entry_rev USING btree (target, name, perms, atime, mtime, ctime);
+
+
+--
+-- Name: person_name_email_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX person_name_email_idx ON person USING btree (name, email);
 
 
 --
