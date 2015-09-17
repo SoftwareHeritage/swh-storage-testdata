@@ -182,7 +182,7 @@ CREATE FUNCTION swh_directory_entry_dir_add() RETURNS void
     AS $$
 begin
     insert into directory_entry_dir (target, name, perms, atime, mtime, ctime)
-    select t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
+    select distinct t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
     from tmp_directory_entry_dir t
     where not exists (
     select 1
@@ -214,7 +214,7 @@ CREATE FUNCTION swh_directory_entry_file_add() RETURNS void
     AS $$
 begin
     insert into directory_entry_file (target, name, perms, atime, mtime, ctime)
-    select t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
+    select distinct t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
     from tmp_directory_entry_file t
     where not exists (
     select 1
@@ -246,7 +246,7 @@ CREATE FUNCTION swh_directory_entry_rev_add() RETURNS void
     AS $$
 begin
     insert into directory_entry_rev (target, name, perms, atime, mtime, ctime)
-    select t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
+    select distinct t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
     from tmp_directory_entry_rev t
     where not exists (
     select 1
@@ -369,6 +369,25 @@ $$;
 
 
 --
+-- Name: swh_mktemp_release(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_release() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    create temporary table tmp_release (
+        like release including defaults,
+        author_name text not null default '',
+        author_email text not null default ''
+    ) on commit drop;
+    alter table tmp_release drop column author;
+    return;
+end
+$$;
+
+
+--
 -- Name: swh_mktemp_revision(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -385,6 +404,28 @@ begin
     ) on commit drop;
     alter table tmp_revision drop column author;
     alter table tmp_revision drop column committer;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_person_add_from_release(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_person_add_from_release() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    with t as (
+        select distinct author_name as name, author_email as email from tmp_release
+    ) insert into person (name, email)
+    select name, email from t
+    where not exists (
+        select 1
+	from person p
+	where t.name = p.name and t.email = p.email
+    );
     return;
 end
 $$;
@@ -415,6 +456,42 @@ $$;
 
 
 --
+-- Name: swh_release_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_release_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    perform swh_person_add_from_release();
+
+    insert into release (id, revision, date, date_offset, name, comment, author)
+    select t.id, t.revision, t.date, t.date_offset, t.name, t.comment, a.id
+    from tmp_release t
+    left join person a on a.name = t.author_name and a.email = t.author_email;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_release_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_release_missing() RETURNS SETOF sha1_git
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select id from tmp_release
+	except
+	select id from release;
+    return;
+end
+$$;
+
+
+--
 -- Name: swh_revision_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -424,8 +501,8 @@ CREATE FUNCTION swh_revision_add() RETURNS void
 begin
     perform swh_person_add_from_revision();
 
-    insert into revision (id, date, committer_date, type, directory, message, author, committer)
-    select t.id, t.date, t.committer_date, t.type, t.directory, t.message, a.id, c.id
+    insert into revision (id, date, date_offset, committer_date, committer_date_offset, type, directory, message, author, committer)
+    select t.id, t.date, t.date_offset, t.committer_date, t.committer_date_offset, t.type, t.directory, t.message, a.id, c.id
     from tmp_revision t
     left join person a on a.name = t.author_name and a.email = t.author_email
     left join person c on c.name = t.committer_name and c.email = t.committer_email;
@@ -876,9 +953,9 @@ CREATE TABLE release (
     id sha1_git NOT NULL,
     revision sha1_git,
     date timestamp with time zone,
-    date_offset integer,
+    date_offset smallint,
     name text,
-    comment text,
+    comment bytea,
     author bigint
 );
 
@@ -890,12 +967,12 @@ CREATE TABLE release (
 CREATE TABLE revision (
     id sha1_git NOT NULL,
     date timestamp with time zone,
-    date_offset integer,
+    date_offset smallint,
     committer_date timestamp with time zone,
-    committer_date_offset integer,
+    committer_date_offset smallint,
     type revision_type NOT NULL,
     directory sha1_git,
-    message text,
+    message bytea,
     author bigint,
     committer bigint
 );
@@ -907,7 +984,7 @@ CREATE TABLE revision (
 
 CREATE TABLE revision_history (
     id sha1_git NOT NULL,
-    parent_id sha1_git NOT NULL,
+    parent_id sha1_git,
     parent_rank integer DEFAULT 0 NOT NULL
 );
 
@@ -995,7 +1072,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-13	2015-09-16 15:02:21.618078+02	Work In Progress
+14	2015-09-17 14:17:49.716919+02	Work In Progress
 \.
 
 
@@ -1383,19 +1460,11 @@ ALTER TABLE ONLY release
 
 
 --
--- Name: revision_history_id_parent_rank_key; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY revision_history
-    ADD CONSTRAINT revision_history_id_parent_rank_key UNIQUE (id, parent_rank);
-
-
---
 -- Name: revision_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
 --
 
 ALTER TABLE ONLY revision_history
-    ADD CONSTRAINT revision_history_pkey PRIMARY KEY (id, parent_id);
+    ADD CONSTRAINT revision_history_pkey PRIMARY KEY (id, parent_rank);
 
 
 --
@@ -1421,6 +1490,13 @@ CREATE UNIQUE INDEX directory_entry_dir_target_name_perms_atime_mtime_ctime_idx 
 
 
 --
+-- Name: directory_entry_dir_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX directory_entry_dir_target_name_perms_idx ON directory_entry_dir USING btree (target, name, perms) WHERE (((atime IS NULL) AND (mtime IS NULL)) AND (ctime IS NULL));
+
+
+--
 -- Name: directory_entry_file_target_name_perms_atime_mtime_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1428,10 +1504,24 @@ CREATE UNIQUE INDEX directory_entry_file_target_name_perms_atime_mtime_ctime_idx
 
 
 --
+-- Name: directory_entry_file_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX directory_entry_file_target_name_perms_idx ON directory_entry_file USING btree (target, name, perms) WHERE (((atime IS NULL) AND (mtime IS NULL)) AND (ctime IS NULL));
+
+
+--
 -- Name: directory_entry_rev_target_name_perms_atime_mtime_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
 CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_atime_mtime_ctime_idx ON directory_entry_rev USING btree (target, name, perms, atime, mtime, ctime);
+
+
+--
+-- Name: directory_entry_rev_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_idx ON directory_entry_rev USING btree (target, name, perms) WHERE (((atime IS NULL) AND (mtime IS NULL)) AND (ctime IS NULL));
 
 
 --
