@@ -1072,7 +1072,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-14	2015-09-17 14:17:49.716919+02	Work In Progress
+14	2015-09-17 17:55:13.882827+02	Work In Progress
 \.
 
 
@@ -1612,27 +1612,11 @@ ALTER TABLE ONLY occurrence_history
 
 
 --
--- Name: occurrence_history_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY occurrence_history
-    ADD CONSTRAINT occurrence_history_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
-
-
---
 -- Name: occurrence_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY occurrence
     ADD CONSTRAINT occurrence_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
-
-
---
--- Name: occurrence_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY occurrence
-    ADD CONSTRAINT occurrence_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
 
 
 --
@@ -1689,14 +1673,6 @@ ALTER TABLE ONLY project
 
 ALTER TABLE ONLY release
     ADD CONSTRAINT release_author_fkey FOREIGN KEY (author) REFERENCES person(id);
-
-
---
--- Name: release_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY release
-    ADD CONSTRAINT release_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
 
 
 --
