@@ -192,14 +192,15 @@ begin
        t.mtime is not distinct from i.mtime and
        t.ctime is not distinct from i.ctime);
 
-    insert into directory_list_dir (entry_id, dir_id)
-    select i.id, t.dir_id
+    insert into directory_list_dir (dir_id, entry_ids)
+    select t.dir_id, array_agg(i.id)
     from tmp_directory_entry_dir t
     inner join directory_entry_dir i
     on t.target = i.target and t.name = i.name and t.perms = i.perms and
        t.atime is not distinct from i.atime and
        t.mtime is not distinct from i.mtime and
-       t.ctime is not distinct from i.ctime;
+       t.ctime is not distinct from i.ctime
+    group by t.dir_id;
     return;
 end
 $$;
@@ -224,14 +225,15 @@ begin
        t.mtime is not distinct from i.mtime and
        t.ctime is not distinct from i.ctime);
 
-    insert into directory_list_file (entry_id, dir_id)
-    select i.id, t.dir_id
+    insert into directory_list_file (dir_id, entry_ids)
+    select t.dir_id, array_agg(i.id)
     from tmp_directory_entry_file t
     inner join directory_entry_file i
     on t.target = i.target and t.name = i.name and t.perms = i.perms and
        t.atime is not distinct from i.atime and
        t.mtime is not distinct from i.mtime and
-       t.ctime is not distinct from i.ctime;
+       t.ctime is not distinct from i.ctime
+    group by t.dir_id;
     return;
 end
 $$;
@@ -256,14 +258,15 @@ begin
        t.mtime is not distinct from i.mtime and
        t.ctime is not distinct from i.ctime);
 
-    insert into directory_list_rev (entry_id, dir_id)
-    select i.id, t.dir_id
+    insert into directory_list_rev (dir_id, entry_ids)
+    select t.dir_id, array_agg(i.id)
     from tmp_directory_entry_rev t
     inner join directory_entry_rev i
     on t.target = i.target and t.name = i.name and t.perms = i.perms and
        t.atime is not distinct from i.atime and
        t.mtime is not distinct from i.mtime and
-       t.ctime is not distinct from i.ctime;
+       t.ctime is not distinct from i.ctime
+    group by t.dir_id;
     return;
 end
 $$;
@@ -308,23 +311,23 @@ CREATE FUNCTION swh_directory_walk_one(walked_dir_id sha1_git) RETURNS SETOF dir
     AS $$
 begin
     return query (
-        select dir_id, 'dir' as type, target, name, perms, atime, mtime, ctime
-	from directory_list_dir l
+        (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_dir where dir_id = walked_dir_id)
+	select dir_id, 'dir' as type, target, name, perms, atime, mtime, ctime
+	from l
 	left join directory_entry_dir d
-	on l.entry_id = d.id
-	where l.dir_id = walked_dir_id
+	on l.entry_id = d.id)
     union
+        (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_file where dir_id = walked_dir_id)
         select dir_id, 'file' as type, target, name, perms, atime, mtime, ctime
-	from directory_list_file l
+	from l
 	left join directory_entry_file d
-	on l.entry_id = d.id
-	where l.dir_id = walked_dir_id
+	on l.entry_id = d.id)
     union
+        (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_rev where dir_id = walked_dir_id)
         select dir_id, 'rev' as type, target, name, perms, atime, mtime, ctime
-	from directory_list_rev l
+	from l
 	left join directory_entry_rev d
-	on l.entry_id = d.id
-	where l.dir_id = walked_dir_id
+	on l.entry_id = d.id)
     ) order by name;
     return;
 end
@@ -661,7 +664,7 @@ ALTER SEQUENCE directory_entry_rev_id_seq OWNED BY directory_entry_rev.id;
 
 CREATE TABLE directory_list_dir (
     dir_id sha1_git NOT NULL,
-    entry_id bigint NOT NULL
+    entry_ids bigint[]
 );
 
 
@@ -671,7 +674,7 @@ CREATE TABLE directory_list_dir (
 
 CREATE TABLE directory_list_file (
     dir_id sha1_git NOT NULL,
-    entry_id bigint NOT NULL
+    entry_ids bigint[]
 );
 
 
@@ -681,7 +684,7 @@ CREATE TABLE directory_list_file (
 
 CREATE TABLE directory_list_rev (
     dir_id sha1_git NOT NULL,
-    entry_id bigint NOT NULL
+    entry_ids bigint[]
 );
 
 
@@ -1072,7 +1075,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-14	2015-09-17 17:55:13.882827+02	Work In Progress
+14	2015-09-21 16:04:10.348437+02	Work In Progress
 \.
 
 
@@ -1133,7 +1136,7 @@ SELECT pg_catalog.setval('directory_entry_rev_id_seq', 1, false);
 -- Data for Name: directory_list_dir; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_list_dir (dir_id, entry_id) FROM stdin;
+COPY directory_list_dir (dir_id, entry_ids) FROM stdin;
 \.
 
 
@@ -1141,7 +1144,7 @@ COPY directory_list_dir (dir_id, entry_id) FROM stdin;
 -- Data for Name: directory_list_file; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_list_file (dir_id, entry_id) FROM stdin;
+COPY directory_list_file (dir_id, entry_ids) FROM stdin;
 \.
 
 
@@ -1149,7 +1152,7 @@ COPY directory_list_file (dir_id, entry_id) FROM stdin;
 -- Data for Name: directory_list_rev; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_list_rev (dir_id, entry_id) FROM stdin;
+COPY directory_list_rev (dir_id, entry_ids) FROM stdin;
 \.
 
 
@@ -1344,7 +1347,7 @@ ALTER TABLE ONLY directory_entry_rev
 --
 
 ALTER TABLE ONLY directory_list_dir
-    ADD CONSTRAINT directory_list_dir_pkey PRIMARY KEY (dir_id, entry_id);
+    ADD CONSTRAINT directory_list_dir_pkey PRIMARY KEY (dir_id);
 
 
 --
@@ -1352,7 +1355,7 @@ ALTER TABLE ONLY directory_list_dir
 --
 
 ALTER TABLE ONLY directory_list_file
-    ADD CONSTRAINT directory_list_file_pkey PRIMARY KEY (dir_id, entry_id);
+    ADD CONSTRAINT directory_list_file_pkey PRIMARY KEY (dir_id);
 
 
 --
@@ -1360,7 +1363,7 @@ ALTER TABLE ONLY directory_list_file
 --
 
 ALTER TABLE ONLY directory_list_rev
-    ADD CONSTRAINT directory_list_rev_pkey PRIMARY KEY (dir_id, entry_id);
+    ADD CONSTRAINT directory_list_rev_pkey PRIMARY KEY (dir_id);
 
 
 --
@@ -1525,6 +1528,27 @@ CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_idx ON directory_entry
 
 
 --
+-- Name: directory_list_dir_entry_ids_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX directory_list_dir_entry_ids_idx ON directory_list_dir USING gin (entry_ids);
+
+
+--
+-- Name: directory_list_file_entry_ids_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX directory_list_file_entry_ids_idx ON directory_list_file USING gin (entry_ids);
+
+
+--
+-- Name: directory_list_rev_entry_ids_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX directory_list_rev_entry_ids_idx ON directory_list_rev USING gin (entry_ids);
+
+
+--
 -- Name: person_name_email_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1540,14 +1564,6 @@ ALTER TABLE ONLY directory_list_dir
 
 
 --
--- Name: directory_list_dir_entry_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY directory_list_dir
-    ADD CONSTRAINT directory_list_dir_entry_id_fkey FOREIGN KEY (entry_id) REFERENCES directory_entry_dir(id);
-
-
---
 -- Name: directory_list_file_dir_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1556,27 +1572,11 @@ ALTER TABLE ONLY directory_list_file
 
 
 --
--- Name: directory_list_file_entry_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY directory_list_file
-    ADD CONSTRAINT directory_list_file_entry_id_fkey FOREIGN KEY (entry_id) REFERENCES directory_entry_file(id);
-
-
---
 -- Name: directory_list_rev_dir_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory_list_rev
     ADD CONSTRAINT directory_list_rev_dir_id_fkey FOREIGN KEY (dir_id) REFERENCES directory(id);
-
-
---
--- Name: directory_list_rev_entry_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY directory_list_rev
-    ADD CONSTRAINT directory_list_rev_entry_id_fkey FOREIGN KEY (entry_id) REFERENCES directory_entry_rev(id);
 
 
 --
