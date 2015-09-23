@@ -93,6 +93,17 @@ CREATE TYPE content_status AS ENUM (
 
 
 --
+-- Name: directory_entry_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE directory_entry_type AS ENUM (
+    'file',
+    'dir',
+    'rev'
+);
+
+
+--
 -- Name: file_perms; Type: DOMAIN; Schema: public; Owner: -
 --
 
@@ -112,7 +123,7 @@ CREATE DOMAIN unix_path AS text;
 
 CREATE TYPE directory_entry AS (
 	dir_id sha1_git,
-	type text,
+	type directory_entry_type,
 	target sha1_git,
 	name unix_path,
 	perms file_perms,
@@ -130,6 +141,26 @@ CREATE TYPE revision_type AS ENUM (
     'git',
     'tar',
     'dsc'
+);
+
+
+--
+-- Name: revision_log_entry; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE revision_log_entry AS (
+	id sha1_git,
+	date timestamp with time zone,
+	date_offset smallint,
+	committer_date timestamp with time zone,
+	committer_date_offset smallint,
+	type revision_type,
+	directory sha1_git,
+	message bytea,
+	author_name text,
+	author_email text,
+	committer_name text,
+	committer_email text
 );
 
 
@@ -312,19 +343,19 @@ CREATE FUNCTION swh_directory_walk_one(walked_dir_id sha1_git) RETURNS SETOF dir
 begin
     return query (
         (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_dir where dir_id = walked_dir_id)
-	select dir_id, 'dir' as type, target, name, perms, atime, mtime, ctime
+	select dir_id, 'dir'::directory_entry_type as type, target, name, perms, atime, mtime, ctime
 	from l
 	left join directory_entry_dir d
 	on l.entry_id = d.id)
     union
         (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_file where dir_id = walked_dir_id)
-        select dir_id, 'file' as type, target, name, perms, atime, mtime, ctime
+        select dir_id, 'file'::directory_entry_type as type, target, name, perms, atime, mtime, ctime
 	from l
 	left join directory_entry_file d
 	on l.entry_id = d.id)
     union
         (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_rev where dir_id = walked_dir_id)
-        select dir_id, 'rev' as type, target, name, perms, atime, mtime, ctime
+        select dir_id, 'rev'::directory_entry_type as type, target, name, perms, atime, mtime, ctime
 	from l
 	left join directory_entry_rev d
 	on l.entry_id = d.id)
@@ -509,6 +540,51 @@ begin
     from tmp_revision t
     left join person a on a.name = t.author_name and a.email = t.author_email
     left join person c on c.name = t.committer_name and c.email = t.committer_email;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_revision_list(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_list(root_revision sha1_git) RETURNS SETOF sha1_git
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+	with recursive rev_list(id) as (
+	    (select id from revision where id = root_revision)
+	    union
+	    (select parent_id
+	     from revision_history as h
+	     join rev_list on h.id = rev_list.id)
+	)
+	select * from rev_list;
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_revision_log(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_log(root_revision sha1_git) RETURNS SETOF revision_log_entry
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select revision.id, date, date_offset,
+	    committer_date, committer_date_offset,
+	    type, directory, message,
+	    author.name as author_name, author.email as author_email,
+	    committer.name as committer_name, committer.email as committer_email
+	from swh_revision_list(root_revision) as rev_list
+	join revision on revision.id = rev_list
+	join person as author on revision.author = author.id
+	join person as committer on revision.committer = committer.id;
     return;
 end
 $$;
@@ -1075,7 +1151,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-14	2015-09-21 16:04:10.348437+02	Work In Progress
+14	2015-09-23 17:51:03.72219+02	Work In Progress
 \.
 
 
