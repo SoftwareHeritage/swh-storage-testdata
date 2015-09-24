@@ -1,0 +1,12 @@
+[submodule "git-repos/hellogitworld"]
+	path = git-repos/hellogitworld
+	url = https://github.com/githubtraining/hellogitworld.git
+[submodule "git-repos/example-submodule"]
+	path = git-repos/example-submodule
+	url = https://github.com/githubtraining/example-submodule
+[submodule "git-repos/moreutils"]
+	path = git-repos/moreutils
+	url = git://git.kitenet.net/moreutils
+[submodule "git-repos/sed"]
+	path = git-repos/sed
+	url = http://git.savannah.gnu.org/r/sed.git
