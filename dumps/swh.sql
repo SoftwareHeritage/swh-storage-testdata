@@ -58,7 +58,7 @@ CREATE DOMAIN sha1_git AS bytea
 -- Name: unix_path; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN unix_path AS text;
+CREATE DOMAIN unix_path AS bytea;
 
 
 --
@@ -1381,7 +1381,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-15	2015-09-28 16:06:16.254688+02	Work In Progress
+16	2015-09-28 17:56:53.177629+02	Work In Progress
 \.
 
 
