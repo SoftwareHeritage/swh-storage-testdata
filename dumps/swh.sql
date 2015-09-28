@@ -47,19 +47,49 @@ COMMENT ON EXTENSION btree_gist IS 'support for indexing common datatypes in GiS
 SET search_path = public, pg_catalog;
 
 --
--- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
---
-
-CREATE DOMAIN sha1 AS bytea
-	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
-
-
---
 -- Name: sha1_git; Type: DOMAIN; Schema: public; Owner: -
 --
 
 CREATE DOMAIN sha1_git AS bytea
 	CONSTRAINT sha1_git_check CHECK ((length(VALUE) = 20));
+
+
+--
+-- Name: unix_path; Type: DOMAIN; Schema: public; Owner: -
+--
+
+CREATE DOMAIN unix_path AS text;
+
+
+--
+-- Name: content_dir; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE content_dir AS (
+	directory sha1_git,
+	path unix_path
+);
+
+
+--
+-- Name: content_occurrence; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE content_occurrence AS (
+	origin_type text,
+	origin_url text,
+	branch text,
+	revision_id sha1_git,
+	path unix_path
+);
+
+
+--
+-- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
+--
+
+CREATE DOMAIN sha1 AS bytea
+	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
 
 
 --
@@ -108,13 +138,6 @@ CREATE TYPE directory_entry_type AS ENUM (
 --
 
 CREATE DOMAIN file_perms AS integer;
-
-
---
--- Name: unix_path; Type: DOMAIN; Schema: public; Owner: -
---
-
-CREATE DOMAIN unix_path AS text;
 
 
 --
@@ -171,8 +194,6 @@ CREATE TYPE revision_log_entry AS (
 CREATE FUNCTION swh_content_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
-declare
-    rows bigint;
 begin
     insert into content (sha1, sha1_git, sha256, length, status)
 	select distinct sha1, sha1_git, sha256, length, status
@@ -183,6 +204,130 @@ begin
 	    -- Specifically, using "INSERT .. ON CONFLICT IGNORE" we can avoid
 	    -- the extra swh_content_missing() query here.
     return;
+end
+$$;
+
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+-- Name: content; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE TABLE content (
+    sha1 sha1 NOT NULL,
+    sha1_git sha1_git NOT NULL,
+    sha256 sha256 NOT NULL,
+    length bigint NOT NULL,
+    ctime timestamp with time zone DEFAULT now() NOT NULL,
+    status content_status DEFAULT 'visible'::content_status NOT NULL
+);
+
+
+--
+-- Name: swh_content_find(sha1, sha1_git, sha256); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_find(sha1 sha1 DEFAULT NULL::bytea, sha1_git sha1_git DEFAULT NULL::bytea, sha256 sha256 DEFAULT NULL::bytea) RETURNS content
+    LANGUAGE plpgsql
+    AS $$
+declare
+    con content;
+    filters text[] := array[] :: text[];  -- AND-clauses used to filter content
+    q text;
+begin
+    if sha1 is not null then
+        filters := filters || format('sha1 = %L', sha1);
+    end if;
+    if sha1_git is not null then
+        filters := filters || format('sha1_git = %L', sha1_git);
+    end if;
+    if sha256 is not null then
+        filters := filters || format('sha256 = %L', sha256);
+    end if;
+
+    if cardinality(filters) = 0 then
+        return null;
+    else
+        q = format('select * from content where %s',
+	        array_to_string(filters, ' and '));
+        execute q into con;
+	return con;
+    end if;
+end
+$$;
+
+
+--
+-- Name: swh_content_find_directory(sha1); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_find_directory(content_id sha1) RETURNS content_dir
+    LANGUAGE plpgsql
+    AS $$
+declare
+    d content_dir;
+begin
+    with recursive path as (
+	-- Recursively build a path from the requested content to a root
+	-- directory. Each iteration returns a pair (dir_id, filename) where
+	-- filename is relative to dir_id. Stops when no parent directory can
+	-- be found.
+	(select dir.id as dir_id, dir_entry_f.name as name, 0 as depth
+	 from directory_entry_file as dir_entry_f
+	 join content on content.sha1_git = dir_entry_f.target
+	 join directory_list_file as ls_f on ls_f.entry_ids @> array[dir_entry_f.id]
+	 join directory as dir on ls_f.dir_id = dir.id
+	 where content.sha1 = content_id
+	 limit 1)
+	union all
+	(select dir.id as dir_id,
+		(dir_entry_d.name || '/' || path.name)::unix_path as name,
+		path.depth + 1
+	 from path
+	 join directory_entry_dir as dir_entry_d on dir_entry_d.target = path.dir_id
+	 join directory_list_dir as ls_d on ls_d.entry_ids @> array[dir_entry_d.id]
+	 join directory as dir on ls_d.dir_id = dir.id
+	 limit 1)
+    )
+    select dir_id, name from path order by depth desc limit 1
+    into strict d;
+
+    return d;
+end
+$$;
+
+
+--
+-- Name: swh_content_find_occurrence(sha1); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_find_occurrence(content_id sha1) RETURNS content_occurrence
+    LANGUAGE plpgsql
+    AS $$
+declare
+    dir content_dir;
+    rev sha1_git;
+    occ occurrence%ROWTYPE;
+    coc content_occurrence;
+begin
+    -- each step could fail if no results are found, and that's OK
+    select * from swh_content_find_directory(content_id)     -- look up directory
+	into strict dir;
+    select id from revision where directory = dir.directory  -- look up revision
+	limit 1
+	into strict rev;
+    select * from swh_revision_find_occurrence(rev)	     -- look up occurrence
+	into strict occ;
+
+    select origin.type, origin.url, occ.branch, rev, dir.path
+    from origin
+    where origin.id = occ.origin
+    into strict coc;
+
+    return coc;
 end
 $$;
 
@@ -303,10 +448,6 @@ end
 $$;
 
 
-SET default_tablespace = '';
-
-SET default_with_oids = false;
-
 --
 -- Name: directory; Type: TABLE; Schema: public; Owner: -; Tablespace: 
 --
@@ -342,23 +483,32 @@ CREATE FUNCTION swh_directory_walk_one(walked_dir_id sha1_git) RETURNS SETOF dir
     AS $$
 begin
     return query (
-        (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_dir where dir_id = walked_dir_id)
-	select dir_id, 'dir'::directory_entry_type as type, target, name, perms, atime, mtime, ctime
+        (with l as
+	     (select dir_id, unnest(entry_ids) as entry_id
+	      from directory_list_dir
+	      where dir_id = walked_dir_id)
+	select dir_id, 'dir'::directory_entry_type as type,
+	       target, name, perms, atime, mtime, ctime
 	from l
-	left join directory_entry_dir d
-	on l.entry_id = d.id)
+	left join directory_entry_dir d on l.entry_id = d.id)
     union
-        (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_file where dir_id = walked_dir_id)
-        select dir_id, 'file'::directory_entry_type as type, target, name, perms, atime, mtime, ctime
+        (with l as
+	     (select dir_id, unnest(entry_ids) as entry_id
+	      from directory_list_file
+	      where dir_id = walked_dir_id)
+        select dir_id, 'file'::directory_entry_type as type,
+	       target, name, perms, atime, mtime, ctime
 	from l
-	left join directory_entry_file d
-	on l.entry_id = d.id)
+	left join directory_entry_file d on l.entry_id = d.id)
     union
-        (with l as (select dir_id, unnest(entry_ids) as entry_id from directory_list_rev where dir_id = walked_dir_id)
-        select dir_id, 'rev'::directory_entry_type as type, target, name, perms, atime, mtime, ctime
+        (with l as
+	     (select dir_id, unnest(entry_ids) as entry_id
+	      from directory_list_rev
+	      where dir_id = walked_dir_id)
+        select dir_id, 'rev'::directory_entry_type as type,
+	       target, name, perms, atime, mtime, ctime
 	from l
-	left join directory_entry_rev d
-	on l.entry_id = d.id)
+	left join directory_entry_rev d on l.entry_id = d.id)
     ) order by name;
     return;
 end
@@ -546,6 +696,70 @@ $$;
 
 
 --
+-- Name: occurrence; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE TABLE occurrence (
+    origin bigint NOT NULL,
+    branch text NOT NULL,
+    revision sha1_git NOT NULL
+);
+
+
+--
+-- Name: swh_revision_find_occurrence(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_find_occurrence(revision_id sha1_git) RETURNS occurrence
+    LANGUAGE plpgsql
+    AS $$
+declare
+    occ occurrence%ROWTYPE;
+    rev sha1_git;
+begin
+    -- first check to see if revision_id is already pointed by an occurrence
+    select origin, branch, revision
+    from occurrence_history as occ_hist
+    where occ_hist.revision = revision_id
+    order by upper(occ_hist.validity)  -- TODO filter by authority?
+    limit 1
+    into occ;
+
+    -- no occurrence point to revision_id, walk up the history
+    if not found then
+        -- recursively walk the history, stopping immediately before a revision
+        -- pointed to by an occurrence.
+	-- TODO find a nicer way to stop at, but *including*, that revision
+	with recursive revlog as (
+	    (select revision_id as rev_id, 0 as depth)
+	    union all
+	    (select hist.parent_id as rev_id, revlog.depth + 1
+	     from revlog
+	     join revision_history as hist on hist.id = revlog.rev_id
+	     and not exists(select 1 from occurrence_history
+			    where revision = hist.parent_id)
+	     limit 1)
+	)
+	select rev_id from revlog order by depth desc limit 1
+	into strict rev;
+
+	-- as we stopped before a pointed by revision, look it up again and
+	-- return its data
+	select origin, branch, revision
+	from revision_history as rev_hist, occurrence_history as occ_hist
+	where rev_hist.id = rev
+	and occ_hist.revision = rev_hist.parent_id
+	order by upper(occ_hist.validity)  -- TODO filter by authority?
+	limit 1
+	into strict occ;  -- will fail if no occurrence is found, and that's OK
+    end if;
+
+    return occ;
+end
+$$;
+
+
+--
 -- Name: swh_revision_list(sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -608,17 +822,44 @@ $$;
 
 
 --
--- Name: content; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+-- Name: swh_skipped_content_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE TABLE content (
-    sha1 sha1 NOT NULL,
-    sha1_git sha1_git NOT NULL,
-    sha256 sha256 NOT NULL,
-    length bigint NOT NULL,
-    ctime timestamp with time zone DEFAULT now() NOT NULL,
-    status content_status DEFAULT 'visible'::content_status NOT NULL
-);
+CREATE FUNCTION swh_skipped_content_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    insert into skipped_content (sha1, sha1_git, sha256, length, status, reason)
+	select distinct sha1, sha1_git, sha256, length, status, reason
+	from tmp_skipped_content
+	where (coalesce(sha1, ''), coalesce(sha1_git, ''), coalesce(sha256, '')) in
+	    (select coalesce(sha1, ''), coalesce(sha1_git, ''), coalesce(sha256, '') from swh_skipped_content_missing());
+	    -- TODO XXX use postgres 9.5 "UPSERT" support here, when available.
+	    -- Specifically, using "INSERT .. ON CONFLICT IGNORE" we can avoid
+	    -- the extra swh_content_missing() query here.
+    return;
+end
+$$;
+
+
+--
+-- Name: swh_skipped_content_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_skipped_content_missing() RETURNS SETOF content_signature
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+	select sha1, sha1_git, sha256 from tmp_skipped_content
+	where not exists
+	(select 1 from skipped_content s where
+	    sha1 is not distinct from s.sha1 and
+	    sha1_git is not distinct from s.sha1_git and
+	    sha256 is not distinct from s.sha256);
+    return;
+end
+$$;
 
 
 --
@@ -832,17 +1073,6 @@ CREATE SEQUENCE list_history_id_seq
 --
 
 ALTER SEQUENCE list_history_id_seq OWNED BY list_history.id;
-
-
---
--- Name: occurrence; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE occurrence (
-    origin bigint NOT NULL,
-    branch text NOT NULL,
-    revision sha1_git NOT NULL
-);
 
 
 --
@@ -1069,6 +1299,22 @@ CREATE TABLE revision_history (
 
 
 --
+-- Name: skipped_content; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE TABLE skipped_content (
+    sha1 sha1,
+    sha1_git sha1_git,
+    sha256 sha256,
+    length bigint NOT NULL,
+    ctime timestamp with time zone DEFAULT now() NOT NULL,
+    status content_status DEFAULT 'absent'::content_status NOT NULL,
+    reason text NOT NULL,
+    origin bigint
+);
+
+
+--
 -- Name: id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1151,7 +1397,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-14	2015-09-23 17:51:03.72219+02	Work In Progress
+14	2015-09-28 14:50:09.98651+02	Work In Progress
 \.
 
 
@@ -1379,6 +1625,14 @@ COPY revision_history (id, parent_id, parent_rank) FROM stdin;
 
 
 --
+-- Data for Name: skipped_content; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY skipped_content (sha1, sha1_git, sha256, length, ctime, status, reason, origin) FROM stdin;
+\.
+
+
+--
 -- Name: content_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1555,10 +1809,25 @@ ALTER TABLE ONLY revision
 
 
 --
+-- Name: skipped_content_sha1_sha1_git_sha256_key; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY skipped_content
+    ADD CONSTRAINT skipped_content_sha1_sha1_git_sha256_key UNIQUE (sha1, sha1_git, sha256);
+
+
+--
 -- Name: content_sha1_git_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
 CREATE UNIQUE INDEX content_sha1_git_idx ON content USING btree (sha1_git);
+
+
+--
+-- Name: content_sha256_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX content_sha256_idx ON content USING btree (sha256);
 
 
 --
@@ -1629,6 +1898,27 @@ CREATE INDEX directory_list_rev_entry_ids_idx ON directory_list_rev USING gin (e
 --
 
 CREATE UNIQUE INDEX person_name_email_idx ON person USING btree (name, email);
+
+
+--
+-- Name: skipped_content_sha1_git_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX skipped_content_sha1_git_idx ON skipped_content USING btree (sha1_git);
+
+
+--
+-- Name: skipped_content_sha1_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX skipped_content_sha1_idx ON skipped_content USING btree (sha1);
+
+
+--
+-- Name: skipped_content_sha256_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE UNIQUE INDEX skipped_content_sha256_idx ON skipped_content USING btree (sha256);
 
 
 --
@@ -1773,6 +2063,14 @@ ALTER TABLE ONLY revision
 
 ALTER TABLE ONLY revision_history
     ADD CONSTRAINT revision_history_id_fkey FOREIGN KEY (id) REFERENCES revision(id);
+
+
+--
+-- Name: skipped_content_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY skipped_content
+    ADD CONSTRAINT skipped_content_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
 
 
 --
