@@ -265,11 +265,8 @@ $$;
 --
 
 CREATE FUNCTION swh_content_find_directory(content_id sha1) RETURNS content_dir
-    LANGUAGE plpgsql
+    LANGUAGE sql
     AS $$
-declare
-    d content_dir;
-begin
     with recursive path as (
 	-- Recursively build a path from the requested content to a root
 	-- directory. Each iteration returns a pair (dir_id, filename) where
@@ -290,11 +287,7 @@ begin
 	 join directory as dir on dir.dir_entries @> array[dir_entry_d.id]
 	 limit 1)
     )
-    select dir_id, name from path order by depth desc limit 1
-    into strict d;
-
-    return d;
-end
+    select dir_id, name from path order by depth desc limit 1;
 $$;
 
 
@@ -313,19 +306,24 @@ declare
 begin
     -- each step could fail if no results are found, and that's OK
     select * from swh_content_find_directory(content_id)     -- look up directory
-	into strict dir;
+	into dir;
+    if not found then return null; end if;
+
     select id from revision where directory = dir.directory  -- look up revision
 	limit 1
-	into strict rev;
+	into rev;
+    if not found then return null; end if;
+
     select * from swh_revision_find_occurrence(rev)	     -- look up occurrence
-	into strict occ;
+	into occ;
+    if not found then return null; end if;
 
     select origin.type, origin.url, occ.branch, rev, dir.path
     from origin
     where origin.id = occ.origin
-    into strict coc;
+    into coc;
 
-    return coc;
+    return coc;  -- might be NULL
 end
 $$;
 
@@ -434,34 +432,30 @@ $$;
 --
 
 CREATE FUNCTION swh_directory_walk_one(walked_dir_id sha1_git) RETURNS SETOF directory_entry
-    LANGUAGE plpgsql
+    LANGUAGE sql
     AS $$
-begin
-    return query
-        with dir as (
-	    select id as dir_id, dir_entries, file_entries, rev_entries
-	    from directory
-	    where id = walked_dir_id),
-	ls_d as (select dir_id, unnest(dir_entries) as entry_id from dir),
-	ls_f as (select dir_id, unnest(file_entries) as entry_id from dir),
-	ls_r as (select dir_id, unnest(rev_entries) as entry_id from dir)
-	(select dir_id, 'dir'::directory_entry_type as type,
-	        target, name, perms, atime, mtime, ctime
-	 from ls_d
-	 left join directory_entry_dir d on ls_d.entry_id = d.id)
-        union
-        (select dir_id, 'file'::directory_entry_type as type,
-	        target, name, perms, atime, mtime, ctime
-	 from ls_f
-	 left join directory_entry_file d on ls_f.entry_id = d.id)
-        union
-        (select dir_id, 'rev'::directory_entry_type as type,
-	        target, name, perms, atime, mtime, ctime
-	 from ls_r
-	 left join directory_entry_rev d on ls_r.entry_id = d.id)
-        order by name;
-    return;
-end
+    with dir as (
+	select id as dir_id, dir_entries, file_entries, rev_entries
+	from directory
+	where id = walked_dir_id),
+    ls_d as (select dir_id, unnest(dir_entries) as entry_id from dir),
+    ls_f as (select dir_id, unnest(file_entries) as entry_id from dir),
+    ls_r as (select dir_id, unnest(rev_entries) as entry_id from dir)
+    (select dir_id, 'dir'::directory_entry_type as type,
+	    target, name, perms, atime, mtime, ctime
+     from ls_d
+     left join directory_entry_dir d on ls_d.entry_id = d.id)
+    union
+    (select dir_id, 'file'::directory_entry_type as type,
+	    target, name, perms, atime, mtime, ctime
+     from ls_f
+     left join directory_entry_file d on ls_f.entry_id = d.id)
+    union
+    (select dir_id, 'rev'::directory_entry_type as type,
+	    target, name, perms, atime, mtime, ctime
+     from ls_r
+     left join directory_entry_rev d on ls_r.entry_id = d.id)
+    order by name;
 $$;
 
 
@@ -507,17 +501,14 @@ $$;
 --
 
 CREATE FUNCTION swh_mktemp_release() RETURNS void
-    LANGUAGE plpgsql
+    LANGUAGE sql
     AS $$
-begin
     create temporary table tmp_release (
         like release including defaults,
         author_name text not null default '',
         author_email text not null default ''
     ) on commit drop;
     alter table tmp_release drop column author;
-    return;
-end
 $$;
 
 
@@ -526,9 +517,8 @@ $$;
 --
 
 CREATE FUNCTION swh_mktemp_revision() RETURNS void
-    LANGUAGE plpgsql
+    LANGUAGE sql
     AS $$
-begin
     create temporary table tmp_revision (
         like revision including defaults,
         author_name text not null default '',
@@ -538,8 +528,6 @@ begin
     ) on commit drop;
     alter table tmp_revision drop column author;
     alter table tmp_revision drop column committer;
-    return;
-end
 $$;
 
 
@@ -691,7 +679,8 @@ begin
 	     limit 1)
 	)
 	select rev_id from revlog order by depth desc limit 1
-	into strict rev;
+	into rev;
+	if not found then return null; end if;
 
 	-- as we stopped before a pointed by revision, look it up again and
 	-- return its data
@@ -701,10 +690,10 @@ begin
 	and occ_hist.revision = rev_hist.parent_id
 	order by upper(occ_hist.validity)  -- TODO filter by authority?
 	limit 1
-	into strict occ;  -- will fail if no occurrence is found, and that's OK
+	into occ;
     end if;
 
-    return occ;
+    return occ;  -- might be NULL
 end
 $$;
 
@@ -714,20 +703,16 @@ $$;
 --
 
 CREATE FUNCTION swh_revision_list(root_revision sha1_git) RETURNS SETOF sha1_git
-    LANGUAGE plpgsql
+    LANGUAGE sql
     AS $$
-begin
-    return query
-	with recursive rev_list(id) as (
-	    (select id from revision where id = root_revision)
-	    union
-	    (select parent_id
-	     from revision_history as h
-	     join rev_list on h.id = rev_list.id)
-	)
-	select * from rev_list;
-    return;
-end
+    with recursive rev_list(id) as (
+	(select id from revision where id = root_revision)
+	union
+	(select parent_id
+	 from revision_history as h
+	 join rev_list on h.id = rev_list.id)
+    )
+    select * from rev_list;
 $$;
 
 
@@ -736,21 +721,17 @@ $$;
 --
 
 CREATE FUNCTION swh_revision_log(root_revision sha1_git) RETURNS SETOF revision_log_entry
-    LANGUAGE plpgsql
+    LANGUAGE sql
     AS $$
-begin
-    return query
-        select revision.id, date, date_offset,
-	    committer_date, committer_date_offset,
-	    type, directory, message,
-	    author.name as author_name, author.email as author_email,
-	    committer.name as committer_name, committer.email as committer_email
-	from swh_revision_list(root_revision) as rev_list
-	join revision on revision.id = rev_list
-	join person as author on revision.author = author.id
-	join person as committer on revision.committer = committer.id;
-    return;
-end
+    select revision.id, date, date_offset,
+	committer_date, committer_date_offset,
+	type, directory, message,
+	author.name as author_name, author.email as author_email,
+	committer.name as committer_name, committer.email as committer_email
+    from swh_revision_list(root_revision) as rev_list
+    join revision on revision.id = rev_list
+    join person as author on revision.author = author.id
+    join person as committer on revision.committer = committer.id;
 $$;
 
 
@@ -1329,7 +1310,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-17	2015-09-30 11:01:56.89576+02	Work In Progress
+17	2015-09-30 12:31:44.286043+02	Work In Progress
 \.
 
 
