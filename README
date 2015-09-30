@@ -4,6 +4,8 @@ Software Heritage storage test data
 How to recreate the DB dumps
 ----------------------------
 
+TL;DR: make -C swh-environment rebuild-testdata
+
 Periodically you will need to recreate the test data DB dumps, e.g., after a
 change in the DB schema. To that end:
 
@@ -27,3 +29,6 @@ change in the DB schema. To that end:
 
         git commit
         git push
+
+As a shortcut for steps (1) and (2), you can use Makefile target
+`rebuild-testdata` in swh-environment/Makefile
