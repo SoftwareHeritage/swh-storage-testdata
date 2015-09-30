@@ -338,38 +338,63 @@ CREATE FUNCTION swh_content_missing() RETURNS SETOF content_signature
     LANGUAGE plpgsql
     AS $$
 begin
+    -- This query is critical for (single-algorithm) hash collision detection,
+    -- so we cannot rely only on the fact that a single hash (e.g., sha1) is
+    -- missing from the table content to conclude that a given content is
+    -- missing. Ideally, we would want to (try to) add to content all entries
+    -- in tmp_content that, when considering all columns together, are missing
+    -- from content.
+    --
+    -- But doing that naively would require a *compound* index on all checksum
+    -- columns; that index would not be significantly smaller than the content
+    -- table itself, and therefore won't be used. Therefore we union together
+    -- all contents that differ on at least one column from what is already
+    -- available. If there is a collision on some (but not all) columns, the
+    -- relevant tmp_content entry will be included in the set of content to be
+    -- added, causing a downstream violation of unicity constraint.
     return query
-	select sha1, sha1_git, sha256 from tmp_content
-	except
-	select sha1, sha1_git, sha256 from content;
+	(select sha1, sha1_git, sha256 from tmp_content as tmp
+	 where not exists
+	     (select 1 from content as c where c.sha1 = tmp.sha1))
+	union
+	(select sha1, sha1_git, sha256 from tmp_content as tmp
+	 where not exists
+	     (select 1 from content as c where c.sha1_git = tmp.sha1_git))
+	union
+	(select sha1, sha1_git, sha256 from tmp_content as tmp
+	 where not exists
+	     (select 1 from content as c where c.sha256 = tmp.sha256));
     return;
 end
 $$;
 
 
 --
--- Name: swh_directory_entry_dir_add(); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_directory_entry_add(directory_entry_type); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_directory_entry_dir_add() RETURNS void
+CREATE FUNCTION swh_directory_entry_add(typ directory_entry_type) RETURNS void
     LANGUAGE plpgsql
-    AS $$
+    AS $_$
 begin
-    insert into directory_entry_dir (target, name, perms, atime, mtime, ctime)
+    execute format('
+    insert into directory_entry_%1$s (target, name, perms, atime, mtime, ctime)
     select distinct t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
-    from tmp_directory_entry_dir t
+    from tmp_directory_entry_%1$s t
     where not exists (
     select 1
-    from directory_entry_dir i
+    from directory_entry_%1$s i
     where t.target = i.target and t.name = i.name and t.perms = i.perms and
        t.atime is not distinct from i.atime and
        t.mtime is not distinct from i.mtime and
-       t.ctime is not distinct from i.ctime);
+       t.ctime is not distinct from i.ctime)
+   ', typ);
 
+    execute format('
     with new_entries as (
 	select t.dir_id, array_agg(i.id) as entries
-	from tmp_directory_entry_dir t
-	inner join directory_entry_dir i
+	from tmp_directory_entry_%1$s t
+	inner join directory_entry_%1$s i
 	on t.target = i.target and t.name = i.name and t.perms = i.perms and
 	   t.atime is not distinct from i.atime and
 	   t.mtime is not distinct from i.mtime and
@@ -377,91 +402,14 @@ begin
 	group by t.dir_id
     )
     update directory as d
-    set dir_entries = new_entries.entries
+    set %1$s_entries = new_entries.entries
     from new_entries
-    where d.id = new_entries.dir_id;
+    where d.id = new_entries.dir_id
+    ', typ);
 
     return;
 end
-$$;
-
-
---
--- Name: swh_directory_entry_file_add(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_directory_entry_file_add() RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-begin
-    insert into directory_entry_file (target, name, perms, atime, mtime, ctime)
-    select distinct t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
-    from tmp_directory_entry_file t
-    where not exists (
-    select 1
-    from directory_entry_file i
-    where t.target = i.target and t.name = i.name and t.perms = i.perms and
-       t.atime is not distinct from i.atime and
-       t.mtime is not distinct from i.mtime and
-       t.ctime is not distinct from i.ctime);
-
-    with new_entries as (
-	select t.dir_id, array_agg(i.id) as entries
-	from tmp_directory_entry_file t
-	inner join directory_entry_file i
-	on t.target = i.target and t.name = i.name and t.perms = i.perms and
-	   t.atime is not distinct from i.atime and
-	   t.mtime is not distinct from i.mtime and
-	   t.ctime is not distinct from i.ctime
-	group by t.dir_id
-    )
-    update directory as d
-    set file_entries = new_entries.entries
-    from new_entries
-    where d.id = new_entries.dir_id;
-
-    return;
-end
-$$;
-
-
---
--- Name: swh_directory_entry_rev_add(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_directory_entry_rev_add() RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-begin
-    insert into directory_entry_rev (target, name, perms, atime, mtime, ctime)
-    select distinct t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
-    from tmp_directory_entry_rev t
-    where not exists (
-    select 1
-    from directory_entry_rev i
-    where t.target = i.target and t.name = i.name and t.perms = i.perms and
-       t.atime is not distinct from i.atime and
-       t.mtime is not distinct from i.mtime and
-       t.ctime is not distinct from i.ctime);
-
-    with new_entries as (
-	select t.dir_id, array_agg(i.id) as entries
-	from tmp_directory_entry_rev t
-	inner join directory_entry_rev i
-	on t.target = i.target and t.name = i.name and t.perms = i.perms and
-	   t.atime is not distinct from i.atime and
-	   t.mtime is not distinct from i.mtime and
-	   t.ctime is not distinct from i.ctime
-	group by t.dir_id
-    )
-    update directory as d
-    set rev_entries = new_entries.entries
-    from new_entries
-    where d.id = new_entries.dir_id;
-
-    return;
-end
-$$;
+$_$;
 
 
 --
@@ -1381,7 +1329,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-16	2015-09-28 17:56:53.177629+02	Work In Progress
+17	2015-09-30 11:01:56.89576+02	Work In Progress
 \.
 
 
