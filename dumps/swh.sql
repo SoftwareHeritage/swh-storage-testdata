@@ -149,10 +149,7 @@ CREATE TYPE directory_entry AS (
 	type directory_entry_type,
 	target sha1_git,
 	name unix_path,
-	perms file_perms,
-	atime timestamp with time zone,
-	mtime timestamp with time zone,
-	ctime timestamp with time zone
+	perms file_perms
 );
 
 
@@ -376,16 +373,13 @@ CREATE FUNCTION swh_directory_entry_add(typ directory_entry_type) RETURNS void
     AS $_$
 begin
     execute format('
-    insert into directory_entry_%1$s (target, name, perms, atime, mtime, ctime)
-    select distinct t.target, t.name, t.perms, t.atime, t.mtime, t.ctime
+    insert into directory_entry_%1$s (target, name, perms)
+    select distinct t.target, t.name, t.perms
     from tmp_directory_entry_%1$s t
     where not exists (
     select 1
     from directory_entry_%1$s i
-    where t.target = i.target and t.name = i.name and t.perms = i.perms and
-       t.atime is not distinct from i.atime and
-       t.mtime is not distinct from i.mtime and
-       t.ctime is not distinct from i.ctime)
+    where t.target = i.target and t.name = i.name and t.perms = i.perms)
    ', typ);
 
     execute format('
@@ -393,10 +387,7 @@ begin
 	select t.dir_id, array_agg(i.id) as entries
 	from tmp_directory_entry_%1$s t
 	inner join directory_entry_%1$s i
-	on t.target = i.target and t.name = i.name and t.perms = i.perms and
-	   t.atime is not distinct from i.atime and
-	   t.mtime is not distinct from i.mtime and
-	   t.ctime is not distinct from i.ctime
+	using (target, name, perms)
 	group by t.dir_id
     )
     update directory as d
@@ -420,8 +411,9 @@ CREATE FUNCTION swh_directory_missing() RETURNS SETOF sha1_git
 begin
     return query
 	select id from tmp_directory
-	except
-	select id from directory;
+	where not exists (
+	    select 1 from directory d
+	    where d.id = id);
     return;
 end
 $$;
@@ -442,17 +434,17 @@ CREATE FUNCTION swh_directory_walk_one(walked_dir_id sha1_git) RETURNS SETOF dir
     ls_f as (select dir_id, unnest(file_entries) as entry_id from dir),
     ls_r as (select dir_id, unnest(rev_entries) as entry_id from dir)
     (select dir_id, 'dir'::directory_entry_type as type,
-	    target, name, perms, atime, mtime, ctime
+	    target, name, perms
      from ls_d
      left join directory_entry_dir d on ls_d.entry_id = d.id)
     union
     (select dir_id, 'file'::directory_entry_type as type,
-	    target, name, perms, atime, mtime, ctime
+	    target, name, perms
      from ls_f
      left join directory_entry_file d on ls_f.entry_id = d.id)
     union
     (select dir_id, 'rev'::directory_entry_type as type,
-	    target, name, perms, atime, mtime, ctime
+	    target, name, perms
      from ls_r
      left join directory_entry_rev d on ls_r.entry_id = d.id)
     order by name;
@@ -606,8 +598,9 @@ CREATE FUNCTION swh_release_missing() RETURNS SETOF sha1_git
 begin
     return query
         select id from tmp_release
-	except
-	select id from release;
+	where not exists (
+	select 1 from release r
+	where r.id = id);
     return;
 end
 $$;
@@ -745,8 +738,9 @@ CREATE FUNCTION swh_revision_missing() RETURNS SETOF sha1_git
 begin
     return query
         select id from tmp_revision
-	except
-	select id from revision;
+	where not exists (
+	    select 1 from revision r
+	    where r.id = id);
     return;
 end
 $$;
@@ -824,10 +818,7 @@ CREATE TABLE directory_entry_dir (
     id bigint NOT NULL,
     target sha1_git,
     name unix_path,
-    perms file_perms,
-    atime timestamp with time zone,
-    mtime timestamp with time zone,
-    ctime timestamp with time zone
+    perms file_perms
 );
 
 
@@ -858,10 +849,7 @@ CREATE TABLE directory_entry_file (
     id bigint NOT NULL,
     target sha1_git,
     name unix_path,
-    perms file_perms,
-    atime timestamp with time zone,
-    mtime timestamp with time zone,
-    ctime timestamp with time zone
+    perms file_perms
 );
 
 
@@ -892,10 +880,7 @@ CREATE TABLE directory_entry_rev (
     id bigint NOT NULL,
     target sha1_git,
     name unix_path,
-    perms file_perms,
-    atime timestamp with time zone,
-    mtime timestamp with time zone,
-    ctime timestamp with time zone
+    perms file_perms
 );
 
 
@@ -1310,7 +1295,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-17	2015-09-30 12:31:44.286043+02	Work In Progress
+19	2015-10-04 20:01:57.554853+02	Work In Progress
 \.
 
 
@@ -1326,7 +1311,7 @@ COPY directory (id, dir_entries, file_entries, rev_entries) FROM stdin;
 -- Data for Name: directory_entry_dir; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_entry_dir (id, target, name, perms, atime, mtime, ctime) FROM stdin;
+COPY directory_entry_dir (id, target, name, perms) FROM stdin;
 \.
 
 
@@ -1341,7 +1326,7 @@ SELECT pg_catalog.setval('directory_entry_dir_id_seq', 1, false);
 -- Data for Name: directory_entry_file; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_entry_file (id, target, name, perms, atime, mtime, ctime) FROM stdin;
+COPY directory_entry_file (id, target, name, perms) FROM stdin;
 \.
 
 
@@ -1356,7 +1341,7 @@ SELECT pg_catalog.setval('directory_entry_file_id_seq', 1, false);
 -- Data for Name: directory_entry_rev; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_entry_rev (id, target, name, perms, atime, mtime, ctime) FROM stdin;
+COPY directory_entry_rev (id, target, name, perms) FROM stdin;
 \.
 
 
@@ -1703,45 +1688,24 @@ CREATE INDEX directory_dir_entries_idx ON directory USING gin (dir_entries);
 
 
 --
--- Name: directory_entry_dir_target_name_perms_atime_mtime_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE UNIQUE INDEX directory_entry_dir_target_name_perms_atime_mtime_ctime_idx ON directory_entry_dir USING btree (target, name, perms, atime, mtime, ctime);
-
-
---
 -- Name: directory_entry_dir_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
-CREATE UNIQUE INDEX directory_entry_dir_target_name_perms_idx ON directory_entry_dir USING btree (target, name, perms) WHERE (((atime IS NULL) AND (mtime IS NULL)) AND (ctime IS NULL));
-
-
---
--- Name: directory_entry_file_target_name_perms_atime_mtime_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE UNIQUE INDEX directory_entry_file_target_name_perms_atime_mtime_ctime_idx ON directory_entry_file USING btree (target, name, perms, atime, mtime, ctime);
+CREATE UNIQUE INDEX directory_entry_dir_target_name_perms_idx ON directory_entry_dir USING btree (target, name, perms);
 
 
 --
 -- Name: directory_entry_file_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
-CREATE UNIQUE INDEX directory_entry_file_target_name_perms_idx ON directory_entry_file USING btree (target, name, perms) WHERE (((atime IS NULL) AND (mtime IS NULL)) AND (ctime IS NULL));
-
-
---
--- Name: directory_entry_rev_target_name_perms_atime_mtime_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_atime_mtime_ctime_idx ON directory_entry_rev USING btree (target, name, perms, atime, mtime, ctime);
+CREATE UNIQUE INDEX directory_entry_file_target_name_perms_idx ON directory_entry_file USING btree (target, name, perms);
 
 
 --
 -- Name: directory_entry_rev_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
-CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_idx ON directory_entry_rev USING btree (target, name, perms) WHERE (((atime IS NULL) AND (mtime IS NULL)) AND (ctime IS NULL));
+CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_idx ON directory_entry_rev USING btree (target, name, perms);
 
 
 --
