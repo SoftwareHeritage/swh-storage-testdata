@@ -410,10 +410,10 @@ CREATE FUNCTION swh_directory_missing() RETURNS SETOF sha1_git
     AS $$
 begin
     return query
-	select id from tmp_directory
+	select id from tmp_directory t
 	where not exists (
 	    select 1 from directory d
-	    where d.id = id);
+	    where d.id = t.id);
     return;
 end
 $$;
@@ -524,6 +524,44 @@ $$;
 
 
 --
+-- Name: swh_occurrence_history_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_occurrence_history_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    -- Update intervals we have the data to update
+    with new_intervals as (
+        select t.origin, t.branch, t.authority, t.validity,
+	       o.validity - t.validity as new_validity
+	from tmp_occurrence_history t
+        left join occurrence_history o
+        using (origin, branch, authority)
+	where o.origin is not null),
+    -- do not update intervals if they would become empty (perfect overlap)
+    to_update as (
+        select * from new_intervals
+	where not isempty(new_validity))
+    update occurrence_history o set validity = t.new_validity
+    from to_update t
+    where o.origin = t.origin and o.branch = t.branch and o.authority = t.authority;
+
+    -- Now only insert intervals that aren't already present
+    insert into occurrence_history (origin, branch, revision, authority, validity)
+	select distinct origin, branch, revision, authority, validity
+	from tmp_occurrence_history t
+	where not exists (
+	    select 1 from occurrence_history o
+	    where o.origin = t.origin and o.branch = t.branch and
+	          o.authority = t.authority and o.revision = t.revision and
+		  o.validity = t.validity);
+    return;
+end
+$$;
+
+
+--
 -- Name: swh_person_add_from_release(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -597,10 +635,10 @@ CREATE FUNCTION swh_release_missing() RETURNS SETOF sha1_git
     AS $$
 begin
     return query
-        select id from tmp_release
+        select id from tmp_release t
 	where not exists (
 	select 1 from release r
-	where r.id = id);
+	where r.id = t.id);
     return;
 end
 $$;
@@ -737,10 +775,10 @@ CREATE FUNCTION swh_revision_missing() RETURNS SETOF sha1_git
     AS $$
 begin
     return query
-        select id from tmp_revision
+        select id from tmp_revision t
 	where not exists (
 	    select 1 from revision r
-	    where r.id = id);
+	    where r.id = t.id);
     return;
 end
 $$;
@@ -776,12 +814,12 @@ CREATE FUNCTION swh_skipped_content_missing() RETURNS SETOF content_signature
     AS $$
 begin
     return query
-	select sha1, sha1_git, sha256 from tmp_skipped_content
+	select sha1, sha1_git, sha256 from tmp_skipped_content t
 	where not exists
 	(select 1 from skipped_content s where
-	    sha1 is not distinct from s.sha1 and
-	    sha1_git is not distinct from s.sha1_git and
-	    sha256 is not distinct from s.sha256);
+	    s.sha1 is not distinct from t.sha1 and
+	    s.sha1_git is not distinct from t.sha1_git and
+	    s.sha256 is not distinct from t.sha256);
     return;
 end
 $$;
@@ -1295,7 +1333,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-19	2015-10-04 20:01:57.554853+02	Work In Progress
+21	2015-10-05 18:43:54.645648+02	Work In Progress
 \.
 
 
