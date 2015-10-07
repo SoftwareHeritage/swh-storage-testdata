@@ -177,10 +177,10 @@ CREATE TYPE revision_log_entry AS (
 	type revision_type,
 	directory sha1_git,
 	message bytea,
-	author_name text,
-	author_email text,
-	committer_name text,
-	committer_email text
+	author_name bytea,
+	author_email bytea,
+	committer_name bytea,
+	committer_email bytea
 );
 
 
@@ -497,8 +497,8 @@ CREATE FUNCTION swh_mktemp_release() RETURNS void
     AS $$
     create temporary table tmp_release (
         like release including defaults,
-        author_name text not null default '',
-        author_email text not null default ''
+        author_name bytea not null default '',
+        author_email bytea not null default ''
     ) on commit drop;
     alter table tmp_release drop column author;
 $$;
@@ -513,10 +513,10 @@ CREATE FUNCTION swh_mktemp_revision() RETURNS void
     AS $$
     create temporary table tmp_revision (
         like revision including defaults,
-        author_name text not null default '',
-        author_email text not null default '',
-        committer_name text not null default '',
-        committer_email text not null default ''
+        author_name bytea not null default '',
+        author_email bytea not null default '',
+        committer_name bytea not null default '',
+        committer_email bytea not null default ''
     ) on commit drop;
     alter table tmp_revision drop column author;
     alter table tmp_revision drop column committer;
@@ -1096,8 +1096,8 @@ ALTER SEQUENCE origin_id_seq OWNED BY origin.id;
 
 CREATE TABLE person (
     id bigint NOT NULL,
-    name text DEFAULT ''::text NOT NULL,
-    email text DEFAULT ''::text NOT NULL
+    name bytea DEFAULT '\x'::bytea NOT NULL,
+    email bytea DEFAULT '\x'::bytea NOT NULL
 );
 
 
@@ -1333,7 +1333,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-21	2015-10-05 18:43:54.645648+02	Work In Progress
+22	2015-10-07 15:26:30.536481+02	Work In Progress
 \.
 
 
