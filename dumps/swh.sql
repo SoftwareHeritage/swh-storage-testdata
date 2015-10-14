@@ -165,6 +165,27 @@ CREATE TYPE revision_type AS ENUM (
 
 
 --
+-- Name: revision_entry; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE revision_entry AS (
+	id sha1_git,
+	date timestamp with time zone,
+	date_offset smallint,
+	committer_date timestamp with time zone,
+	committer_date_offset smallint,
+	type revision_type,
+	directory sha1_git,
+	message bytea,
+	author_name bytea,
+	author_email bytea,
+	committer_name bytea,
+	committer_email bytea,
+	parents bytea[]
+);
+
+
+--
 -- Name: revision_log_entry; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -262,7 +283,7 @@ $$;
 --
 
 CREATE FUNCTION swh_content_find_directory(content_id sha1) RETURNS content_dir
-    LANGUAGE sql
+    LANGUAGE sql STABLE
     AS $$
     with recursive path as (
 	-- Recursively build a path from the requested content to a root
@@ -420,11 +441,31 @@ $$;
 
 
 --
+-- Name: swh_directory_walk(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_directory_walk(walked_dir_id sha1_git) RETURNS SETOF directory_entry
+    LANGUAGE sql STABLE
+    AS $$
+    with recursive entries as (
+        select dir_id, type, target, name, perms
+        from swh_directory_walk_one(walked_dir_id)
+        union all
+        select dir_id, type, target, (dirname || '/' || name)::unix_path as name, perms
+        from (select (swh_directory_walk_one(dirs.target)).*, dirs.name as dirname
+              from (select target, name from entries where type = 'dir') as dirs) as with_parent
+    )
+    select dir_id, type, target, name, perms
+    from entries
+$$;
+
+
+--
 -- Name: swh_directory_walk_one(sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION swh_directory_walk_one(walked_dir_id sha1_git) RETURNS SETOF directory_entry
-    LANGUAGE sql
+    LANGUAGE sql STABLE
     AS $$
     with dir as (
 	select id as dir_id, dir_entries, file_entries, rev_entries
@@ -696,29 +737,11 @@ begin
 
     -- no occurrence point to revision_id, walk up the history
     if not found then
-        -- recursively walk the history, stopping immediately before a revision
-        -- pointed to by an occurrence.
-	-- TODO find a nicer way to stop at, but *including*, that revision
-	with recursive revlog as (
-	    (select revision_id as rev_id, 0 as depth)
-	    union all
-	    (select hist.parent_id as rev_id, revlog.depth + 1
-	     from revlog
-	     join revision_history as hist on hist.id = revlog.rev_id
-	     and not exists(select 1 from occurrence_history
-			    where revision = hist.parent_id)
-	     limit 1)
-	)
-	select rev_id from revlog order by depth desc limit 1
-	into rev;
-	if not found then return null; end if;
-
-	-- as we stopped before a pointed by revision, look it up again and
-	-- return its data
 	select origin, branch, revision
-	from revision_history as rev_hist, occurrence_history as occ_hist
-	where rev_hist.id = rev
-	and occ_hist.revision = rev_hist.parent_id
+	from swh_revision_list_children(revision_id) as rev_list(sha1_git)
+	left join occurrence_history occ_hist
+	on rev_list.sha1_git = occ_hist.revision
+	where occ_hist.origin is not null
 	order by upper(occ_hist.validity)  -- TODO filter by authority?
 	limit 1
 	into occ;
@@ -730,11 +753,39 @@ $$;
 
 
 --
+-- Name: swh_revision_get(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_get() RETURNS SETOF revision_entry
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select t.id, r.date, r.date_offset,
+               r.committer_date, r.committer_date_offset,
+               r.type, r.directory, r.message,
+               a.name, a.email, c.name, c.email,
+	       array_agg(rh.parent_id::bytea order by rh.parent_rank)
+                   as parents
+        from tmp_revision t
+        left join revision r on t.id = r.id
+        left join person a on a.id = r.author
+        left join person c on c.id = r.committer
+        left join revision_history rh on rh.id = r.id
+        group by t.id, a.name, a.email, r.date, r.date_offset,
+               c.name, c.email, r.committer_date, r.committer_date_offset,
+               r.type, r.directory, r.message;
+    return;
+end
+$$;
+
+
+--
 -- Name: swh_revision_list(sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION swh_revision_list(root_revision sha1_git) RETURNS SETOF sha1_git
-    LANGUAGE sql
+    LANGUAGE sql STABLE
     AS $$
     with recursive rev_list(id) as (
 	(select id from revision where id = root_revision)
@@ -748,11 +799,29 @@ $$;
 
 
 --
+-- Name: swh_revision_list_children(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_list_children(root_revision sha1_git) RETURNS SETOF sha1_git
+    LANGUAGE sql STABLE
+    AS $$
+    with recursive rev_list(id) as (
+	(select id from revision where id = root_revision)
+	union
+	(select h.id
+	 from revision_history as h
+	 join rev_list on h.parent_id = rev_list.id)
+    )
+    select * from rev_list;
+$$;
+
+
+--
 -- Name: swh_revision_log(sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION swh_revision_log(root_revision sha1_git) RETURNS SETOF revision_log_entry
-    LANGUAGE sql
+    LANGUAGE sql STABLE
     AS $$
     select revision.id, date, date_offset,
 	committer_date, committer_date_offset,
@@ -1333,7 +1402,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-22	2015-10-07 15:26:30.536481+02	Work In Progress
+24	2015-10-14 10:24:26.469201+02	Work In Progress
 \.
 
 
@@ -1705,6 +1774,13 @@ ALTER TABLE ONLY skipped_content
 
 
 --
+-- Name: content_ctime_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX content_ctime_idx ON content USING btree (ctime);
+
+
+--
 -- Name: content_sha1_git_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1761,10 +1837,38 @@ CREATE INDEX directory_rev_entries_idx ON directory USING gin (rev_entries);
 
 
 --
+-- Name: occurrence_history_revision_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX occurrence_history_revision_idx ON occurrence_history USING btree (revision);
+
+
+--
 -- Name: person_name_email_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
 CREATE UNIQUE INDEX person_name_email_idx ON person USING btree (name, email);
+
+
+--
+-- Name: release_revision_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX release_revision_idx ON release USING btree (revision);
+
+
+--
+-- Name: revision_directory_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX revision_directory_idx ON revision USING btree (directory);
+
+
+--
+-- Name: revision_history_parent_id_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX revision_history_parent_id_idx ON revision_history USING btree (parent_id);
 
 
 --
