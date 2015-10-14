@@ -123,6 +123,16 @@ CREATE TYPE content_status AS ENUM (
 
 
 --
+-- Name: counter; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE counter AS (
+	label text,
+	value bigint
+);
+
+
+--
 -- Name: directory_entry_type; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -895,6 +905,35 @@ $$;
 
 
 --
+-- Name: swh_stat_counters(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_stat_counters() RETURNS SETOF counter
+    LANGUAGE sql STABLE
+    AS $$
+    select relname::text as label, reltuples::bigint as value
+    from pg_class
+    where oid in (
+        'public.content'::regclass,
+        'public.directory'::regclass,
+        'public.directory_entry_dir'::regclass,
+        'public.directory_entry_file'::regclass,
+        'public.directory_entry_rev'::regclass,
+        'public.occurrence'::regclass,
+        'public.occurrence_history'::regclass,
+        'public.origin'::regclass,
+        'public.person'::regclass,
+        'public.project'::regclass,
+        'public.project_history'::regclass,
+        'public.release'::regclass,
+        'public.revision'::regclass,
+        'public.revision_history'::regclass,
+        'public.skipped_content'::regclass
+    );
+$$;
+
+
+--
 -- Name: dbversion; Type: TABLE; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1402,7 +1441,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-24	2015-10-14 10:24:26.469201+02	Work In Progress
+24	2015-10-14 10:37:31.709213+02	Work In Progress
 \.
 
 
