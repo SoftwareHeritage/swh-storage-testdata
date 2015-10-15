@@ -1309,7 +1309,8 @@ CREATE TABLE release (
     date_offset smallint,
     name text,
     comment bytea,
-    author bigint
+    author bigint,
+    synthetic boolean DEFAULT false NOT NULL
 );
 
 
@@ -1327,7 +1328,8 @@ CREATE TABLE revision (
     directory sha1_git,
     message bytea,
     author bigint,
-    committer bigint
+    committer bigint,
+    synthetic boolean DEFAULT false NOT NULL
 );
 
 
@@ -1441,7 +1443,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-24	2015-10-14 10:37:31.709213+02	Work In Progress
+24	2015-10-15 17:10:13.368391+02	Work In Progress
 \.
 
 
@@ -1550,6 +1552,7 @@ COPY occurrence_history (origin, branch, revision, authority, validity) FROM std
 
 COPY organization (id, parent_id, name, description, homepage, list_engine, list_url, list_params, latest_list) FROM stdin;
 1	\N	softwareheritage	Software Heritage	http://www.softwareheritage.org	\N	\N	\N	\N
+2	\N	gnu	GNU's not Unix!	https://gnu.org/	\N	\N	\N	\N
 \.
 
 
@@ -1557,7 +1560,7 @@ COPY organization (id, parent_id, name, description, homepage, list_engine, list
 -- Name: organization_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('organization_id_seq', 1, true);
+SELECT pg_catalog.setval('organization_id_seq', 2, true);
 
 
 --
@@ -1624,7 +1627,7 @@ SELECT pg_catalog.setval('project_id_seq', 1, false);
 -- Data for Name: release; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY release (id, revision, date, date_offset, name, comment, author) FROM stdin;
+COPY release (id, revision, date, date_offset, name, comment, author, synthetic) FROM stdin;
 \.
 
 
@@ -1632,7 +1635,7 @@ COPY release (id, revision, date, date_offset, name, comment, author) FROM stdin
 -- Data for Name: revision; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY revision (id, date, date_offset, committer_date, committer_date_offset, type, directory, message, author, committer) FROM stdin;
+COPY revision (id, date, date_offset, committer_date, committer_date_offset, type, directory, message, author, committer, synthetic) FROM stdin;
 \.
 
 
