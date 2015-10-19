@@ -191,6 +191,7 @@ CREATE TYPE revision_entry AS (
 	author_email bytea,
 	committer_name bytea,
 	committer_email bytea,
+	synthetic boolean,
 	parents bytea[]
 );
 
@@ -211,7 +212,8 @@ CREATE TYPE revision_log_entry AS (
 	author_name bytea,
 	author_email bytea,
 	committer_name bytea,
-	committer_email bytea
+	committer_email bytea,
+	synthetic boolean
 );
 
 
@@ -668,8 +670,8 @@ CREATE FUNCTION swh_release_add() RETURNS void
 begin
     perform swh_person_add_from_release();
 
-    insert into release (id, revision, date, date_offset, name, comment, author)
-    select t.id, t.revision, t.date, t.date_offset, t.name, t.comment, a.id
+    insert into release (id, revision, date, date_offset, name, comment, author, synthetic)
+    select t.id, t.revision, t.date, t.date_offset, t.name, t.comment, a.id, t.synthetic
     from tmp_release t
     left join person a on a.name = t.author_name and a.email = t.author_email;
     return;
@@ -705,8 +707,8 @@ CREATE FUNCTION swh_revision_add() RETURNS void
 begin
     perform swh_person_add_from_revision();
 
-    insert into revision (id, date, date_offset, committer_date, committer_date_offset, type, directory, message, author, committer)
-    select t.id, t.date, t.date_offset, t.committer_date, t.committer_date_offset, t.type, t.directory, t.message, a.id, c.id
+    insert into revision (id, date, date_offset, committer_date, committer_date_offset, type, directory, message, author, committer, synthetic)
+    select t.id, t.date, t.date_offset, t.committer_date, t.committer_date_offset, t.type, t.directory, t.message, a.id, c.id, t.synthetic
     from tmp_revision t
     left join person a on a.name = t.author_name and a.email = t.author_email
     left join person c on c.name = t.committer_name and c.email = t.committer_email;
@@ -731,34 +733,15 @@ CREATE TABLE occurrence (
 --
 
 CREATE FUNCTION swh_revision_find_occurrence(revision_id sha1_git) RETURNS occurrence
-    LANGUAGE plpgsql
+    LANGUAGE sql STABLE
     AS $$
-declare
-    occ occurrence%ROWTYPE;
-    rev sha1_git;
-begin
-    -- first check to see if revision_id is already pointed by an occurrence
-    select origin, branch, revision
-    from occurrence_history as occ_hist
-    where occ_hist.revision = revision_id
-    order by upper(occ_hist.validity)  -- TODO filter by authority?
-    limit 1
-    into occ;
-
-    -- no occurrence point to revision_id, walk up the history
-    if not found then
 	select origin, branch, revision
 	from swh_revision_list_children(revision_id) as rev_list(sha1_git)
 	left join occurrence_history occ_hist
 	on rev_list.sha1_git = occ_hist.revision
 	where occ_hist.origin is not null
 	order by upper(occ_hist.validity)  -- TODO filter by authority?
-	limit 1
-	into occ;
-    end if;
-
-    return occ;  -- might be NULL
-end
+	limit 1;
 $$;
 
 
@@ -774,7 +757,7 @@ begin
         select t.id, r.date, r.date_offset,
                r.committer_date, r.committer_date_offset,
                r.type, r.directory, r.message,
-               a.name, a.email, c.name, c.email,
+               a.name, a.email, c.name, c.email, r.synthetic,
 	       array_agg(rh.parent_id::bytea order by rh.parent_rank)
                    as parents
         from tmp_revision t
@@ -784,7 +767,7 @@ begin
         left join revision_history rh on rh.id = r.id
         group by t.id, a.name, a.email, r.date, r.date_offset,
                c.name, c.email, r.committer_date, r.committer_date_offset,
-               r.type, r.directory, r.message;
+               r.type, r.directory, r.message, r.synthetic;
     return;
 end
 $$;
@@ -837,7 +820,8 @@ CREATE FUNCTION swh_revision_log(root_revision sha1_git) RETURNS SETOF revision_
 	committer_date, committer_date_offset,
 	type, directory, message,
 	author.name as author_name, author.email as author_email,
-	committer.name as committer_name, committer.email as committer_email
+	committer.name as committer_name, committer.email as committer_email,
+        revision.synthetic
     from swh_revision_list(root_revision) as rev_list
     join revision on revision.id = rev_list
     join person as author on revision.author = author.id
@@ -1443,7 +1427,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-24	2015-10-15 17:10:13.368391+02	Work In Progress
+26	2015-10-19 12:32:53.462601+02	Work In Progress
 \.
 
 
@@ -1552,7 +1536,7 @@ COPY occurrence_history (origin, branch, revision, authority, validity) FROM std
 
 COPY organization (id, parent_id, name, description, homepage, list_engine, list_url, list_params, latest_list) FROM stdin;
 1	\N	softwareheritage	Software Heritage	http://www.softwareheritage.org	\N	\N	\N	\N
-2	\N	gnu	GNU's not Unix!	https://gnu.org/	\N	\N	\N	\N
+2	\N	gnu	GNU is not Unix!	https://gnu.org/	\N	\N	\N	\N
 \.
 
 
