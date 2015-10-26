@@ -164,6 +164,20 @@ CREATE TYPE directory_entry AS (
 
 
 --
+-- Name: entity_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE entity_type AS ENUM (
+    'organization',
+    'group_of_entities',
+    'hosting',
+    'group_of_persons',
+    'person',
+    'project'
+);
+
+
+--
 -- Name: revision_type; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -907,13 +921,59 @@ CREATE FUNCTION swh_stat_counters() RETURNS SETOF counter
         'public.occurrence_history'::regclass,
         'public.origin'::regclass,
         'public.person'::regclass,
-        'public.project'::regclass,
-        'public.project_history'::regclass,
+        'public.entity'::regclass,
+        'public.entity_history'::regclass,
         'public.release'::regclass,
         'public.revision'::regclass,
         'public.revision_history'::regclass,
         'public.skipped_content'::regclass
     );
+$$;
+
+
+--
+-- Name: swh_update_entity_from_entity_history(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_update_entity_from_entity_history() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+begin
+    with all_entities as (
+      select uuid, parent, name, type, description, homepage, active,
+             generated, lister, lister_metadata, doap, last_seen, last_id
+      from (
+          select row_number() over (partition by uuid order by unnest(validity) desc) as row,
+	         id as last_id, uuid, parent, name, type, description, homepage, active,
+		 generated, lister, lister_metadata, doap,
+	         unnest(validity) as last_seen
+          from entity_history
+      ) as latest_entities
+      where latest_entities.row = 1
+    ),
+    updated_uuids as (
+      update entity set
+        parent = all_entities.parent,
+        name = all_entities.name,
+	type = all_entities.type,
+	description = all_entities.description,
+	homepage = all_entities.homepage,
+	active = all_entities.active,
+	generated = all_entities.generated,
+	lister = all_entities.lister,
+	lister_metadata = all_entities.lister_metadata,
+	doap = all_entities.doap,
+	last_seen = all_entities.last_seen,
+        last_id = all_entities.last_id
+      from all_entities
+      where entity.uuid = all_entities.uuid
+      returning entity.uuid
+    )
+    insert into entity
+    (select * from all_entities
+     where uuid not in (select uuid from updated_uuids));
+    return null;
+end
 $$;
 
 
@@ -1034,6 +1094,78 @@ ALTER SEQUENCE directory_entry_rev_id_seq OWNED BY directory_entry_rev.id;
 
 
 --
+-- Name: entity; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE TABLE entity (
+    uuid uuid NOT NULL,
+    parent uuid,
+    name text NOT NULL,
+    type entity_type NOT NULL,
+    description text,
+    homepage text,
+    active boolean NOT NULL,
+    generated boolean NOT NULL,
+    lister uuid,
+    lister_metadata jsonb,
+    doap jsonb,
+    last_seen timestamp with time zone,
+    last_id bigint
+);
+
+
+--
+-- Name: entity_equivalence; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE TABLE entity_equivalence (
+    entity1 uuid NOT NULL,
+    entity2 uuid NOT NULL,
+    CONSTRAINT order_entities CHECK ((entity1 < entity2))
+);
+
+
+--
+-- Name: entity_history; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE TABLE entity_history (
+    id bigint NOT NULL,
+    uuid uuid,
+    parent uuid,
+    name text NOT NULL,
+    type entity_type NOT NULL,
+    description text,
+    homepage text,
+    active boolean NOT NULL,
+    generated boolean NOT NULL,
+    lister uuid,
+    lister_metadata jsonb,
+    doap jsonb,
+    validity timestamp with time zone[]
+);
+
+
+--
+-- Name: entity_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE entity_history_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: entity_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE entity_history_id_seq OWNED BY entity_history.id;
+
+
+--
 -- Name: fetch_history; Type: TABLE; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1074,7 +1206,7 @@ ALTER SEQUENCE fetch_history_id_seq OWNED BY fetch_history.id;
 
 CREATE TABLE list_history (
     id bigint NOT NULL,
-    organization bigint,
+    entity uuid,
     date timestamp with time zone NOT NULL,
     status boolean,
     result json,
@@ -1104,28 +1236,12 @@ ALTER SEQUENCE list_history_id_seq OWNED BY list_history.id;
 
 
 --
--- Name: occurrence_history; Type: TABLE; Schema: public; Owner: -; Tablespace: 
+-- Name: listable_entity; Type: TABLE; Schema: public; Owner: -; Tablespace: 
 --
 
-CREATE TABLE occurrence_history (
-    origin bigint NOT NULL,
-    branch text NOT NULL,
-    revision sha1_git NOT NULL,
-    authority bigint NOT NULL,
-    validity tstzrange NOT NULL
-);
-
-
---
--- Name: organization; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE organization (
-    id bigint NOT NULL,
-    parent_id bigint,
-    name text NOT NULL,
-    description text,
-    homepage text,
+CREATE TABLE listable_entity (
+    uuid uuid NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
     list_engine text,
     list_url text,
     list_params json,
@@ -1134,22 +1250,16 @@ CREATE TABLE organization (
 
 
 --
--- Name: organization_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: occurrence_history; Type: TABLE; Schema: public; Owner: -; Tablespace: 
 --
 
-CREATE SEQUENCE organization_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: organization_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE organization_id_seq OWNED BY organization.id;
+CREATE TABLE occurrence_history (
+    origin bigint NOT NULL,
+    branch text NOT NULL,
+    revision sha1_git NOT NULL,
+    authority uuid NOT NULL,
+    validity tstzrange NOT NULL
+);
 
 
 --
@@ -1159,7 +1269,9 @@ ALTER SEQUENCE organization_id_seq OWNED BY organization.id;
 CREATE TABLE origin (
     id bigint NOT NULL,
     type text,
-    url text NOT NULL
+    url text NOT NULL,
+    lister uuid,
+    project uuid
 );
 
 
@@ -1210,76 +1322,6 @@ CREATE SEQUENCE person_id_seq
 --
 
 ALTER SEQUENCE person_id_seq OWNED BY person.id;
-
-
---
--- Name: project; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE project (
-    id bigint NOT NULL,
-    organization bigint,
-    origin bigint,
-    name text,
-    description text,
-    homepage text,
-    doap jsonb
-);
-
-
---
--- Name: project_history; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE project_history (
-    id bigint NOT NULL,
-    project bigint,
-    validity tstzrange,
-    organization bigint,
-    origin bigint,
-    name text,
-    description text,
-    homepage text,
-    doap jsonb
-);
-
-
---
--- Name: project_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE project_history_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: project_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE project_history_id_seq OWNED BY project_history.id;
-
-
---
--- Name: project_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE project_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: project_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE project_id_seq OWNED BY project.id;
 
 
 --
@@ -1369,6 +1411,13 @@ ALTER TABLE ONLY directory_entry_rev ALTER COLUMN id SET DEFAULT nextval('direct
 -- Name: id; Type: DEFAULT; Schema: public; Owner: -
 --
 
+ALTER TABLE ONLY entity_history ALTER COLUMN id SET DEFAULT nextval('entity_history_id_seq'::regclass);
+
+
+--
+-- Name: id; Type: DEFAULT; Schema: public; Owner: -
+--
+
 ALTER TABLE ONLY fetch_history ALTER COLUMN id SET DEFAULT nextval('fetch_history_id_seq'::regclass);
 
 
@@ -1377,13 +1426,6 @@ ALTER TABLE ONLY fetch_history ALTER COLUMN id SET DEFAULT nextval('fetch_histor
 --
 
 ALTER TABLE ONLY list_history ALTER COLUMN id SET DEFAULT nextval('list_history_id_seq'::regclass);
-
-
---
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY organization ALTER COLUMN id SET DEFAULT nextval('organization_id_seq'::regclass);
 
 
 --
@@ -1401,20 +1443,6 @@ ALTER TABLE ONLY person ALTER COLUMN id SET DEFAULT nextval('person_id_seq'::reg
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY project ALTER COLUMN id SET DEFAULT nextval('project_id_seq'::regclass);
-
-
---
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY project_history ALTER COLUMN id SET DEFAULT nextval('project_history_id_seq'::regclass);
-
-
---
 -- Data for Name: content; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -1427,7 +1455,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-26	2015-10-19 12:32:53.462601+02	Work In Progress
+27	2015-10-26 16:26:26.968094+01	Work In Progress
 \.
 
 
@@ -1485,6 +1513,59 @@ SELECT pg_catalog.setval('directory_entry_rev_id_seq', 1, false);
 
 
 --
+-- Data for Name: entity; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, last_seen, last_id) FROM stdin;
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	8
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	4
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	6
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	5
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	3
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	11
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	7
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2015-10-26 16:26:26.968094+01	9
+\.
+
+
+--
+-- Data for Name: entity_equivalence; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY entity_equivalence (entity1, entity2) FROM stdin;
+\.
+
+
+--
+-- Data for Name: entity_history; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, validity) FROM stdin;
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2015-10-26 16:26:26.968094+01"}
+\.
+
+
+--
+-- Name: entity_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('entity_history_id_seq', 11, true);
+
+
+--
 -- Data for Name: fetch_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -1503,7 +1584,7 @@ SELECT pg_catalog.setval('fetch_history_id_seq', 1, false);
 -- Data for Name: list_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY list_history (id, organization, date, status, result, stdout, stderr, duration) FROM stdin;
+COPY list_history (id, entity, date, status, result, stdout, stderr, duration) FROM stdin;
 \.
 
 
@@ -1512,6 +1593,15 @@ COPY list_history (id, organization, date, status, result, stdout, stderr, durat
 --
 
 SELECT pg_catalog.setval('list_history_id_seq', 1, false);
+
+
+--
+-- Data for Name: listable_entity; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY listable_entity (uuid, enabled, list_engine, list_url, list_params, latest_list) FROM stdin;
+34bd6b1b-463f-43e5-a697-785107f598e4	t	swh.lister.github	\N	\N	\N
+\.
 
 
 --
@@ -1531,27 +1621,10 @@ COPY occurrence_history (origin, branch, revision, authority, validity) FROM std
 
 
 --
--- Data for Name: organization; Type: TABLE DATA; Schema: public; Owner: -
---
-
-COPY organization (id, parent_id, name, description, homepage, list_engine, list_url, list_params, latest_list) FROM stdin;
-1	\N	softwareheritage	Software Heritage	http://www.softwareheritage.org	\N	\N	\N	\N
-2	\N	gnu	GNU is not Unix!	https://gnu.org/	\N	\N	\N	\N
-\.
-
-
---
--- Name: organization_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('organization_id_seq', 2, true);
-
-
---
 -- Data for Name: origin; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY origin (id, type, url) FROM stdin;
+COPY origin (id, type, url, lister, project) FROM stdin;
 \.
 
 
@@ -1575,36 +1648,6 @@ COPY person (id, name, email) FROM stdin;
 --
 
 SELECT pg_catalog.setval('person_id_seq', 1, false);
-
-
---
--- Data for Name: project; Type: TABLE DATA; Schema: public; Owner: -
---
-
-COPY project (id, organization, origin, name, description, homepage, doap) FROM stdin;
-\.
-
-
---
--- Data for Name: project_history; Type: TABLE DATA; Schema: public; Owner: -
---
-
-COPY project_history (id, project, validity, organization, origin, name, description, homepage, doap) FROM stdin;
-\.
-
-
---
--- Name: project_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('project_history_id_seq', 1, false);
-
-
---
--- Name: project_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('project_id_seq', 1, false);
 
 
 --
@@ -1688,6 +1731,30 @@ ALTER TABLE ONLY directory
 
 
 --
+-- Name: entity_equivalence_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY entity_equivalence
+    ADD CONSTRAINT entity_equivalence_pkey PRIMARY KEY (entity1, entity2);
+
+
+--
+-- Name: entity_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY entity_history
+    ADD CONSTRAINT entity_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY entity
+    ADD CONSTRAINT entity_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: fetch_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1704,11 +1771,19 @@ ALTER TABLE ONLY list_history
 
 
 --
+-- Name: listable_entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY listable_entity
+    ADD CONSTRAINT listable_entity_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: occurrence_history_origin_branch_revision_authority_validi_excl; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
 --
 
 ALTER TABLE ONLY occurrence_history
-    ADD CONSTRAINT occurrence_history_origin_branch_revision_authority_validi_excl EXCLUDE USING gist (origin WITH =, branch WITH =, revision WITH =, authority WITH =, validity WITH &&);
+    ADD CONSTRAINT occurrence_history_origin_branch_revision_authority_validi_excl EXCLUDE USING gist (origin WITH =, branch WITH =, revision WITH =, ((authority)::text) WITH =, validity WITH &&);
 
 
 --
@@ -1728,14 +1803,6 @@ ALTER TABLE ONLY occurrence
 
 
 --
--- Name: organization_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY organization
-    ADD CONSTRAINT organization_pkey PRIMARY KEY (id);
-
-
---
 -- Name: origin_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1749,22 +1816,6 @@ ALTER TABLE ONLY origin
 
 ALTER TABLE ONLY person
     ADD CONSTRAINT person_pkey PRIMARY KEY (id);
-
-
---
--- Name: project_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY project_history
-    ADD CONSTRAINT project_history_pkey PRIMARY KEY (id);
-
-
---
--- Name: project_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY project
-    ADD CONSTRAINT project_pkey PRIMARY KEY (id);
 
 
 --
@@ -1863,6 +1914,27 @@ CREATE INDEX directory_rev_entries_idx ON directory USING gin (rev_entries);
 
 
 --
+-- Name: entity_history_name_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX entity_history_name_idx ON entity_history USING btree (name);
+
+
+--
+-- Name: entity_history_uuid_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX entity_history_uuid_idx ON entity_history USING btree (uuid);
+
+
+--
+-- Name: entity_name_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
+--
+
+CREATE INDEX entity_name_idx ON entity USING btree (name);
+
+
+--
 -- Name: occurrence_history_revision_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -1919,6 +1991,53 @@ CREATE UNIQUE INDEX skipped_content_sha256_idx ON skipped_content USING btree (s
 
 
 --
+-- Name: update_entity; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_entity AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON entity_history FOR EACH STATEMENT EXECUTE PROCEDURE swh_update_entity_from_entity_history();
+
+
+--
+-- Name: entity_equivalence_entity1_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY entity_equivalence
+    ADD CONSTRAINT entity_equivalence_entity1_fkey FOREIGN KEY (entity1) REFERENCES entity(uuid);
+
+
+--
+-- Name: entity_equivalence_entity2_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY entity_equivalence
+    ADD CONSTRAINT entity_equivalence_entity2_fkey FOREIGN KEY (entity2) REFERENCES entity(uuid);
+
+
+--
+-- Name: entity_last_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY entity
+    ADD CONSTRAINT entity_last_id_fkey FOREIGN KEY (last_id) REFERENCES entity_history(id);
+
+
+--
+-- Name: entity_lister_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY entity
+    ADD CONSTRAINT entity_lister_fkey FOREIGN KEY (lister) REFERENCES listable_entity(uuid);
+
+
+--
+-- Name: entity_parent_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY entity
+    ADD CONSTRAINT entity_parent_fkey FOREIGN KEY (parent) REFERENCES entity(uuid) DEFERRABLE INITIALLY DEFERRED;
+
+
+--
 -- Name: fetch_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1927,11 +2046,19 @@ ALTER TABLE ONLY fetch_history
 
 
 --
--- Name: list_history_organization_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: list_history_entity_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY list_history
-    ADD CONSTRAINT list_history_organization_fkey FOREIGN KEY (organization) REFERENCES organization(id);
+    ADD CONSTRAINT list_history_entity_fkey FOREIGN KEY (entity) REFERENCES listable_entity(uuid);
+
+
+--
+-- Name: listable_entity_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY listable_entity
+    ADD CONSTRAINT listable_entity_uuid_fkey FOREIGN KEY (uuid) REFERENCES entity(uuid);
 
 
 --
@@ -1939,7 +2066,7 @@ ALTER TABLE ONLY list_history
 --
 
 ALTER TABLE ONLY occurrence_history
-    ADD CONSTRAINT occurrence_history_authority_fkey FOREIGN KEY (authority) REFERENCES organization(id);
+    ADD CONSTRAINT occurrence_history_authority_fkey FOREIGN KEY (authority) REFERENCES entity(uuid);
 
 
 --
@@ -1959,51 +2086,19 @@ ALTER TABLE ONLY occurrence
 
 
 --
--- Name: organization_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: origin_lister_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY organization
-    ADD CONSTRAINT organization_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES organization(id);
-
-
---
--- Name: project_history_organization_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY project_history
-    ADD CONSTRAINT project_history_organization_fkey FOREIGN KEY (organization) REFERENCES organization(id);
+ALTER TABLE ONLY origin
+    ADD CONSTRAINT origin_lister_fkey FOREIGN KEY (lister) REFERENCES listable_entity(uuid);
 
 
 --
--- Name: project_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: origin_project_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY project_history
-    ADD CONSTRAINT project_history_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
-
-
---
--- Name: project_history_project_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY project_history
-    ADD CONSTRAINT project_history_project_fkey FOREIGN KEY (project) REFERENCES project(id);
-
-
---
--- Name: project_organization_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY project
-    ADD CONSTRAINT project_organization_fkey FOREIGN KEY (organization) REFERENCES organization(id);
-
-
---
--- Name: project_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY project
-    ADD CONSTRAINT project_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
+ALTER TABLE ONLY origin
+    ADD CONSTRAINT origin_project_fkey FOREIGN KEY (project) REFERENCES entity(uuid);
 
 
 --
