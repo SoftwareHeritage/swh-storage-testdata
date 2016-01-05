@@ -255,28 +255,6 @@ CREATE TYPE revision_entry AS (
 
 
 --
--- Name: revision_log_entry; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE revision_log_entry AS (
-	id sha1_git,
-	date timestamp with time zone,
-	date_offset smallint,
-	committer_date timestamp with time zone,
-	committer_date_offset smallint,
-	type revision_type,
-	directory sha1_git,
-	message bytea,
-	author_name bytea,
-	author_email bytea,
-	committer_name bytea,
-	committer_email bytea,
-	metadata jsonb,
-	synthetic boolean
-);
-
-
---
 -- Name: swh_content_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -996,19 +974,22 @@ $$;
 -- Name: swh_revision_log(sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_log(root_revision sha1_git) RETURNS SETOF revision_log_entry
+CREATE FUNCTION swh_revision_log(root_revision sha1_git) RETURNS SETOF revision_entry
     LANGUAGE sql STABLE
     AS $$
-    select revision.id, date, date_offset,
-	committer_date, committer_date_offset,
-	type, directory, message,
-	author.name as author_name, author.email as author_email,
-	committer.name as committer_name, committer.email as committer_email,
-        revision.metadata, revision.synthetic
-    from swh_revision_list(root_revision) as rev_list
-    join revision on revision.id = rev_list
-    join person as author on revision.author = author.id
-    join person as committer on revision.committer = committer.id;
+    select t.id, r.date, r.date_offset,
+           r.committer_date, r.committer_date_offset,
+           r.type, r.directory, r.message,
+           a.name, a.email, c.name, c.email, r.metadata, r.synthetic,
+           array_agg(rh.parent_id::bytea order by rh.parent_rank) as parents
+    from swh_revision_list(root_revision) as t(id)
+    left join revision r on t.id = r.id
+    left join person a on a.id = r.author
+    left join person c on c.id = r.committer
+    left join revision_history rh on rh.id = r.id
+    group by t.id, a.name, a.email, r.date, r.date_offset,
+             c.name, c.email, r.committer_date, r.committer_date_offset,
+             r.type, r.directory, r.message, r.metadata, r.synthetic;
 $$;
 
 
@@ -1625,7 +1606,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-32	2015-11-27 13:37:48.421727+01	Work In Progress
+33	2016-01-05 15:11:42.862178+01	Work In Progress
 \.
 
 
@@ -1687,17 +1668,17 @@ SELECT pg_catalog.setval('directory_entry_rev_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, last_seen, last_id) FROM stdin;
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	8
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	4
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	6
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	5
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	3
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	11
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	7
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2015-11-27 13:37:48.421727+01	9
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	8
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	4
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	6
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	5
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	3
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	11
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	7
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	9
 \.
 
 
@@ -1714,17 +1695,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2015-11-27 13:37:48.421727+01"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
 \.
 
 
