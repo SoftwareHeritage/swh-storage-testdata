@@ -897,9 +897,9 @@ CREATE FUNCTION swh_revision_find_occurrence(revision_id sha1_git) RETURNS occur
     LANGUAGE sql STABLE
     AS $$
 	select origin, branch, revision
-	from swh_revision_list_children(revision_id) as rev_list(sha1_git)
+  from swh_revision_list_children(revision_id) as rev_list
 	left join occurrence_history occ_hist
-	on rev_list.sha1_git = occ_hist.revision
+  on rev_list.id = occ_hist.revision
 	where occ_hist.origin is not null
 	order by upper(occ_hist.validity)  -- TODO filter by authority?
 	limit 1;
@@ -935,10 +935,10 @@ $$;
 
 
 --
--- Name: swh_revision_list(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_revision_list(sha1_git, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_list(root_revision sha1_git) RETURNS SETOF sha1_git
+CREATE FUNCTION swh_revision_list(root_revision sha1_git, num_revs bigint DEFAULT NULL::bigint) RETURNS TABLE(id sha1_git, parents bytea[])
     LANGUAGE sql STABLE
     AS $$
     with recursive rev_list(id) as (
@@ -948,15 +948,18 @@ CREATE FUNCTION swh_revision_list(root_revision sha1_git) RETURNS SETOF sha1_git
 	 from revision_history as h
 	 join rev_list on h.id = rev_list.id)
     )
-    select * from rev_list;
+    select rev_list.id as id, array_agg(rh.parent_id::bytea order by rh.parent_rank) as parent from rev_list
+    left join revision_history rh on rev_list.id = rh.id
+    group by rev_list.id
+    limit num_revs;
 $$;
 
 
 --
--- Name: swh_revision_list_children(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_revision_list_children(sha1_git, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_list_children(root_revision sha1_git) RETURNS SETOF sha1_git
+CREATE FUNCTION swh_revision_list_children(root_revision sha1_git, num_revs bigint DEFAULT NULL::bigint) RETURNS TABLE(id sha1_git, parents bytea[])
     LANGUAGE sql STABLE
     AS $$
     with recursive rev_list(id) as (
@@ -966,30 +969,29 @@ CREATE FUNCTION swh_revision_list_children(root_revision sha1_git) RETURNS SETOF
 	 from revision_history as h
 	 join rev_list on h.parent_id = rev_list.id)
     )
-    select * from rev_list;
+    select rev_list.id as id, array_agg(rh.parent_id::bytea order by rh.parent_rank) as parent from rev_list
+    left join revision_history rh on rev_list.id = rh.id
+    group by rev_list.id
+    limit num_revs;
 $$;
 
 
 --
--- Name: swh_revision_log(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_revision_log(sha1_git, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_log(root_revision sha1_git) RETURNS SETOF revision_entry
+CREATE FUNCTION swh_revision_log(root_revision sha1_git, num_revs bigint DEFAULT NULL::bigint) RETURNS SETOF revision_entry
     LANGUAGE sql STABLE
     AS $$
     select t.id, r.date, r.date_offset,
            r.committer_date, r.committer_date_offset,
            r.type, r.directory, r.message,
            a.name, a.email, c.name, c.email, r.metadata, r.synthetic,
-           array_agg(rh.parent_id::bytea order by rh.parent_rank) as parents
-    from swh_revision_list(root_revision) as t(id)
+           t.parents
+    from swh_revision_list(root_revision, num_revs) as t
     left join revision r on t.id = r.id
     left join person a on a.id = r.author
-    left join person c on c.id = r.committer
-    left join revision_history rh on rh.id = r.id
-    group by t.id, a.name, a.email, r.date, r.date_offset,
-             c.name, c.email, r.committer_date, r.committer_date_offset,
-             r.type, r.directory, r.message, r.metadata, r.synthetic;
+    left join person c on c.id = r.committer;
 $$;
 
 
@@ -1606,7 +1608,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-33	2016-01-05 15:11:42.862178+01	Work In Progress
+34	2016-01-06 15:01:01.200086+01	Work In Progress
 \.
 
 
@@ -1668,17 +1670,17 @@ SELECT pg_catalog.setval('directory_entry_rev_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, last_seen, last_id) FROM stdin;
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	8
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	4
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	6
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	5
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	3
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	11
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	7
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2016-01-05 15:11:42.862178+01	9
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	8
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	4
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	6
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	5
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	3
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	11
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	7
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2016-01-06 15:01:01.200086+01	9
 \.
 
 
@@ -1695,17 +1697,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2016-01-05 15:11:42.862178+01"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2016-01-06 15:01:01.200086+01"}
 \.
 
 
