@@ -94,7 +94,7 @@ CREATE TYPE object_type AS ENUM (
 CREATE TYPE content_occurrence AS (
 	origin_type text,
 	origin_url text,
-	branch text,
+	branch bytea,
 	target sha1_git,
 	target_type object_type,
 	path unix_path
@@ -230,7 +230,7 @@ CREATE TYPE release_entry AS (
 	target_type object_type,
 	date timestamp with time zone,
 	date_offset smallint,
-	name text,
+	name bytea,
 	comment bytea,
 	synthetic boolean,
 	author_name bytea,
@@ -757,16 +757,17 @@ $$;
 
 CREATE FUNCTION swh_mktemp(tblname regclass) RETURNS void
     LANGUAGE plpgsql
-    AS $$
+    AS $_$
 begin
     execute format('
-	create temporary table tmp_%I
-	    (like %I including defaults)
-	    on commit drop
-	', tblname, tblname);
+	create temporary table tmp_%1$I
+	    (like %1$I including defaults)
+	    on commit drop;
+      alter table tmp_%1$I drop column if exists object_id;
+	', tblname);
     return;
 end
-$$;
+$_$;
 
 
 --
@@ -775,17 +776,17 @@ $$;
 
 CREATE FUNCTION swh_mktemp_dir_entry(tblname regclass) RETURNS void
     LANGUAGE plpgsql
-    AS $$
+    AS $_$
 begin
     execute format('
-	create temporary table tmp_%I
-	    (like %I including defaults, dir_id sha1_git)
+	create temporary table tmp_%1$I
+	    (like %1$I including defaults, dir_id sha1_git)
 	    on commit drop;
-        alter table tmp_%I drop column id;
-	', tblname, tblname, tblname, tblname);
+        alter table tmp_%1$I drop column id;
+	', tblname);
     return;
 end
-$$;
+$_$;
 
 
 --
@@ -817,6 +818,23 @@ $$;
 
 
 --
+-- Name: swh_mktemp_occurrence_history(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_occurrence_history() RETURNS void
+    LANGUAGE sql
+    AS $$
+    create temporary table tmp_occurrence_history(
+        like occurrence_history including defaults,
+        date timestamptz not null
+    ) on commit drop;
+    alter table tmp_occurrence_history
+      drop column visits,
+      drop column object_id;
+$$;
+
+
+--
 -- Name: swh_mktemp_release(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -829,6 +847,7 @@ CREATE FUNCTION swh_mktemp_release() RETURNS void
         author_email bytea not null default ''
     ) on commit drop;
     alter table tmp_release drop column author;
+    alter table tmp_release drop column object_id;
 $$;
 
 
@@ -861,6 +880,7 @@ CREATE FUNCTION swh_mktemp_revision() RETURNS void
     ) on commit drop;
     alter table tmp_revision drop column author;
     alter table tmp_revision drop column committer;
+    alter table tmp_revision drop column object_id;
 $$;
 
 
@@ -870,24 +890,24 @@ $$;
 
 CREATE TABLE occurrence_history (
     origin bigint,
-    branch text,
+    branch bytea,
     target sha1_git,
     target_type object_type,
-    authority uuid,
-    validity tstzrange,
-    object_id bigint NOT NULL
+    object_id bigint NOT NULL,
+    visits bigint[]
 );
 
 
 --
--- Name: swh_occurrence_get_by(bigint, text, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_occurrence_get_by(bigint, bytea, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_occurrence_get_by(origin_id bigint, branch_name text DEFAULT NULL::text, validity timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF occurrence_history
+CREATE FUNCTION swh_occurrence_get_by(origin_id bigint, branch_name bytea DEFAULT NULL::bytea, date timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF occurrence_history
     LANGUAGE plpgsql
     AS $$
 declare
     filters text[] := array[] :: text[];  -- AND-clauses used to filter content
+    visit_id bigint;
     q text;
 begin
     if origin_id is not null then
@@ -896,8 +916,15 @@ begin
     if branch_name is not null then
         filters := filters || format('branch = %L', branch_name);
     end if;
-    if validity is not null then
-        filters := filters || format('validity @> %L::timestamptz', validity);
+    if date is not null then
+        if origin_id is null then
+            raise exception 'Needs an origin_id to filter by date.';
+        end if;
+        select visit from swh_visit_find_by_date(origin_id, date) into visit_id;
+        if visit_id is null then
+            return;
+        end if;
+        filters := filters || format('%L = any(visits)', visit_id);
     end if;
 
     if cardinality(filters) = 0 then
@@ -905,8 +932,7 @@ begin
     else
         q = format('select * ' ||
                    'from occurrence_history ' ||
-                   'where %s ' ||
-                   'order by validity desc',
+                   'where %s',
 	        array_to_string(filters, ' and '));
         return query execute q;
     end if;
@@ -921,33 +947,67 @@ $$;
 CREATE FUNCTION swh_occurrence_history_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
+declare
+  origin_id origin.id%type;
 begin
-    -- Update intervals we have the data to update
-    with new_intervals as (
-        select t.origin, t.branch, t.authority, t.validity,
-	       o.validity - t.validity as new_validity
-	from tmp_occurrence_history t
-        left join occurrence_history o
-        using (origin, branch, authority)
-	where o.origin is not null),
-    -- do not update intervals if they would become empty (perfect overlap)
-    to_update as (
-        select * from new_intervals
-	where not isempty(new_validity))
-    update occurrence_history o set validity = t.new_validity
-    from to_update t
-    where o.origin = t.origin and o.branch = t.branch and o.authority = t.authority;
+  -- Create new visits
+  with current_visits as (
+    select distinct origin, date from tmp_occurrence_history
+  ),
+  new_visits as (
+      select origin, date, (select coalesce(max(visit), 0)
+                            from origin_visit ov
+                            where ov.origin = origin) +
+                            row_number()
+                            over(partition by origin
+                                           order by origin, date)
+        from current_visits cv
+        where not exists (select 1 from origin_visit ov
+                          where ov.origin = cv.origin and
+                                ov.date = cv.date)
+  )
+  insert into origin_visit (origin, date, visit)
+    select * from new_visits;
 
-    -- Now only insert intervals that aren't already present
-    insert into occurrence_history (origin, branch, target, target_type, authority, validity)
-	select distinct origin, branch, target, target_type, authority, validity
-	from tmp_occurrence_history t
-	where not exists (
-	    select 1 from occurrence_history o
-	    where o.origin = t.origin and o.branch = t.branch and
-	          o.authority = t.authority and o.target = t.target and
-            o.target_type = t.target_type and o.validity = t.validity);
-    return;
+  -- Create or update occurrence_history
+  with occurrence_history_id_visit as (
+    select tmp_occurrence_history.*, object_id, visits, visit from tmp_occurrence_history
+    left join occurrence_history using(origin, target, target_type)
+    left join origin_visit using(origin, date)
+  ),
+  occurrences_to_update as (
+    select object_id, visit from occurrence_history_id_visit where object_id is not null
+  ),
+  update_occurrences as (
+    update occurrence_history
+    set visits = array(select unnest(occurrence_history.visits) as e
+                        union
+                       select occurrences_to_update.visit as e
+                       order by e)
+    from occurrences_to_update
+    where occurrence_history.object_id = occurrences_to_update.object_id
+  )
+  insert into occurrence_history (origin, branch, target, target_type, visits)
+    select origin, branch, target, target_type, ARRAY[visit]
+      from occurrence_history_id_visit
+      where object_id is null;
+
+  -- update occurrence
+  for origin_id in
+    select distinct origin from tmp_occurrence_history
+  loop
+    delete from occurrence where origin = origin_id;
+    insert into occurrence (origin, branch, target, target_type)
+      select origin, branch, target, target_type
+      from occurrence_history
+      where origin = origin_id and
+            (select visit from origin_visit
+             where origin = origin_id
+             order by date desc
+             limit 1) = any(visits);
+  end loop;
+
+  return;
 end
 $$;
 
@@ -1097,7 +1157,7 @@ $$;
 
 CREATE TABLE occurrence (
     origin bigint NOT NULL,
-    branch text NOT NULL,
+    branch bytea NOT NULL,
     target sha1_git,
     target_type object_type
 );
@@ -1116,7 +1176,6 @@ CREATE FUNCTION swh_revision_find_occurrence(revision_id sha1_git) RETURNS occur
   on rev_list.id = occ_hist.target
 	where occ_hist.origin is not null and
         occ_hist.target_type = 'revision'
-	order by upper(occ_hist.validity)  -- TODO filter by authority?
 	limit 1;
 $$;
 
@@ -1146,10 +1205,10 @@ $$;
 
 
 --
--- Name: swh_revision_get_by(bigint, text, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_revision_get_by(bigint, bytea, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_get_by(origin_id bigint, branch_name text DEFAULT NULL::text, validity timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF revision_entry
+CREATE FUNCTION swh_revision_get_by(origin_id bigint, branch_name bytea DEFAULT NULL::bytea, date timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF revision_entry
     LANGUAGE sql STABLE
     AS $$
     select r.id, r.date, r.date_offset,
@@ -1161,7 +1220,7 @@ CREATE FUNCTION swh_revision_get_by(origin_id bigint, branch_name text DEFAULT N
             where rh.id = r.id
             order by rh.parent_rank
         ) as parents
-    from swh_occurrence_get_by(origin_id, branch_name, validity) as occ
+    from swh_occurrence_get_by(origin_id, branch_name, date) as occ
     inner join revision r on occ.target = r.id
     left join person a on a.id = r.author
     left join person c on c.id = r.committer;
@@ -1368,6 +1427,40 @@ begin
      where uuid not in (select uuid from updated_uuids));
     return null;
 end
+$$;
+
+
+--
+-- Name: origin_visit; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE origin_visit (
+    origin bigint NOT NULL,
+    visit bigint NOT NULL,
+    date timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: swh_visit_find_by_date(bigint, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_visit_find_by_date(origin bigint, visit_date timestamp with time zone DEFAULT now()) RETURNS origin_visit
+    LANGUAGE sql STABLE
+    AS $$
+  with closest_two_visits as ((
+    select origin_visit, (date - visit_date) as interval
+    from origin_visit
+    where date >= visit_date
+    order by date asc
+    limit 1
+  ) union (
+    select origin_visit, (visit_date - date) as interval
+    from origin_visit
+    where date < visit_date
+    order by date desc
+    limit 1
+  )) select (origin_visit).* from closest_two_visits order by interval limit 1
 $$;
 
 
@@ -1739,7 +1832,7 @@ CREATE TABLE release (
     target_type object_type,
     date timestamp with time zone,
     date_offset smallint,
-    name text,
+    name bytea,
     comment bytea,
     author bigint,
     synthetic boolean DEFAULT false NOT NULL,
@@ -1971,7 +2064,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-46	2016-01-26 07:34:46.496624+01	Work In Progress
+49	2016-01-27 19:00:36.380737+01	Work In Progress
 \.
 
 
@@ -2040,17 +2133,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, last_seen, last_id) FROM stdin;
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	8
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	4
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	6
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	5
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	3
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	11
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	7
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2016-01-26 07:34:46.496624+01	9
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	8
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	4
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	6
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	5
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	3
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	11
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	7
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2016-01-27 19:00:36.380737+01	9
 \.
 
 
@@ -2067,17 +2160,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2016-01-26 07:34:46.496624+01"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2016-01-27 19:00:36.380737+01"}
 \.
 
 
@@ -2139,7 +2232,7 @@ COPY occurrence (origin, branch, target, target_type) FROM stdin;
 -- Data for Name: occurrence_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY occurrence_history (origin, branch, target, target_type, authority, validity, object_id) FROM stdin;
+COPY occurrence_history (origin, branch, target, target_type, object_id, visits) FROM stdin;
 \.
 
 
@@ -2163,6 +2256,14 @@ COPY origin (id, type, url, lister, project) FROM stdin;
 --
 
 SELECT pg_catalog.setval('origin_id_seq', 1, false);
+
+
+--
+-- Data for Name: origin_visit; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY origin_visit (origin, visit, date) FROM stdin;
+\.
 
 
 --
@@ -2354,6 +2455,14 @@ ALTER TABLE ONLY origin
 
 
 --
+-- Name: origin_visit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY origin_visit
+    ADD CONSTRAINT origin_visit_pkey PRIMARY KEY (origin, visit);
+
+
+--
 -- Name: person_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2499,6 +2608,13 @@ CREATE INDEX origin_type_url_idx ON origin USING btree (type, url);
 
 
 --
+-- Name: origin_visit_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX origin_visit_date_idx ON origin_visit USING btree (date);
+
+
+--
 -- Name: person_name_email_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2619,14 +2735,6 @@ ALTER TABLE ONLY listable_entity
 
 
 --
--- Name: occurrence_history_authority_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY occurrence_history
-    ADD CONSTRAINT occurrence_history_authority_fkey FOREIGN KEY (authority) REFERENCES entity(uuid);
-
-
---
 -- Name: occurrence_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2656,6 +2764,14 @@ ALTER TABLE ONLY origin
 
 ALTER TABLE ONLY origin
     ADD CONSTRAINT origin_project_fkey FOREIGN KEY (project) REFERENCES entity(uuid);
+
+
+--
+-- Name: origin_visit_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY origin_visit
+    ADD CONSTRAINT origin_visit_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
 
 
 --
