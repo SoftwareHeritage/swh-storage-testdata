@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.5.0
--- Dumped by pg_dump version 9.5.0
+-- Dumped from database version 9.5.1
+-- Dumped by pg_dump version 9.5.1
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -217,6 +217,18 @@ CREATE TYPE entity_id AS (
 	doap jsonb,
 	last_seen timestamp with time zone,
 	last_id bigint
+);
+
+
+--
+-- Name: object_found; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE object_found AS (
+	sha1_git sha1_git,
+	type object_type,
+	id bytea,
+	object_id bigint
 );
 
 
@@ -468,10 +480,10 @@ CREATE FUNCTION swh_content_missing_per_sha1() RETURNS SETOF sha1
     AS $$
 begin
     return query
-           (select sha1
-            from tmp_content_sha1 as tmp
+           (select id::sha1
+            from tmp_bytea as tmp
             where not exists
-            (select 1 from content as c where c.sha1=tmp.sha1));
+            (select 1 from content as c where c.sha1=tmp.id));
 end
 $$;
 
@@ -794,21 +806,15 @@ $_$;
 
 
 --
--- Name: swh_mktemp_content_sha1(); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_mktemp_bytea(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_sha1() RETURNS void
+CREATE FUNCTION swh_mktemp_bytea() RETURNS void
     LANGUAGE sql
     AS $$
-    create temporary table tmp_content_sha1
-     (like content including defaults)
-     on commit drop;
-    alter table tmp_content_sha1 drop column if exists sha256;
-    alter table tmp_content_sha1 drop column if exists sha1_git;
-    alter table tmp_content_sha1 drop column if exists ctime;
-    alter table tmp_content_sha1 drop column if exists length;
-    alter table tmp_content_sha1 drop column if exists status;
-    alter table tmp_content_sha1 drop column if exists object_id;
+    create temporary table tmp_bytea (
+      id bytea
+    ) on commit drop;
 $$;
 
 
@@ -839,7 +845,7 @@ CREATE FUNCTION swh_mktemp_entity_history() RETURNS void
     LANGUAGE sql
     AS $$
     create temporary table tmp_entity_history (
-        like entity_history including defaults);
+        like entity_history including defaults) on commit drop;
     alter table tmp_entity_history drop column id;
 $$;
 
@@ -855,7 +861,7 @@ CREATE FUNCTION swh_mktemp_entity_lister() RETURNS void
         id bigint,
         lister uuid,
 	lister_metadata jsonb
-    );
+    ) on commit drop;
 $$;
 
 
@@ -894,19 +900,6 @@ $$;
 
 
 --
--- Name: swh_mktemp_release_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_mktemp_release_get() RETURNS void
-    LANGUAGE sql
-    AS $$
-    create temporary table tmp_release (
-      id sha1_git primary key
-    ) on commit drop;
-$$;
-
-
---
 -- Name: swh_mktemp_revision(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -923,6 +916,34 @@ CREATE FUNCTION swh_mktemp_revision() RETURNS void
     alter table tmp_revision drop column author;
     alter table tmp_revision drop column committer;
     alter table tmp_revision drop column object_id;
+$$;
+
+
+--
+-- Name: swh_object_find_by_sha1_git(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_object_find_by_sha1_git() RETURNS SETOF object_found
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+    with known_objects as ((
+        select id as sha1_git, 'release'::object_type as type, id, object_id from release r
+        where exists (select 1 from tmp_bytea t where t.id = r.id)
+    ) union all (
+        select id as sha1_git, 'revision'::object_type as type, id, object_id from revision r
+        where exists (select 1 from tmp_bytea t where t.id = r.id)
+    ) union all (
+        select id as sha1_git, 'directory'::object_type as type, id, object_id from directory d
+        where exists (select 1 from tmp_bytea t where t.id = d.id)
+    ) union all (
+        select sha1_git as sha1_git, 'content'::object_type as type, sha1 as id, object_id from content c
+        where exists (select 1 from tmp_bytea t where t.id = c.sha1_git)
+    ))
+    select t.id::sha1_git as sha1_git, k.type, k.id, k.object_id from tmp_bytea t
+      left join known_objects k on t.id = k.sha1_git;
+end
 $$;
 
 
@@ -1160,7 +1181,7 @@ begin
     return query
         select r.id, r.target, r.target_type, r.date, r.date_offset, r.date_neg_utc_offset, r.name, r.comment,
                r.synthetic, p.id as author_id, p.name as author_name, p.email as author_email
-        from tmp_release t
+        from tmp_bytea t
         inner join release r on t.id = r.id
         inner join person p on p.id = r.author;
     return;
@@ -1193,12 +1214,11 @@ CREATE FUNCTION swh_release_missing() RETURNS SETOF sha1_git
     LANGUAGE plpgsql
     AS $$
 begin
-    return query
-        select id from tmp_release t
-	where not exists (
-	select 1 from release r
-	where r.id = t.id);
-    return;
+  return query
+    select id::sha1_git from tmp_bytea t
+    where not exists (
+      select 1 from release r
+      where r.id = t.id);
 end
 $$;
 
@@ -2140,7 +2160,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-58	2016-02-11 12:29:04.117029+01	Work In Progress
+61	2016-03-04 14:44:37.194932+01	Work In Progress
 \.
 
 
@@ -2209,17 +2229,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, last_seen, last_id) FROM stdin;
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	8
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	4
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	6
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	5
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	3
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	11
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	7
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2016-02-11 12:29:04.117029+01	9
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	8
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	4
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	6
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	5
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	3
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	11
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	7
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2016-03-04 14:44:37.194932+01	9
 \.
 
 
@@ -2236,17 +2256,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2016-02-11 12:29:04.117029+01"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 14:44:37.194932+01"}
 \.
 
 
