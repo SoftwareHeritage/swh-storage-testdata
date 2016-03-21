@@ -212,9 +212,8 @@ CREATE TYPE entity_id AS (
 	homepage text,
 	active boolean,
 	generated boolean,
-	lister uuid,
 	lister_metadata jsonb,
-	doap jsonb,
+	metadata jsonb,
 	last_seen timestamp with time zone,
 	last_id bigint
 );
@@ -259,7 +258,8 @@ CREATE TYPE release_entry AS (
 CREATE TYPE revision_type AS ENUM (
     'git',
     'tar',
-    'dsc'
+    'dsc',
+    'svn'
 );
 
 
@@ -666,7 +666,7 @@ begin
     select t.id, e.*
     from tmp_entity_lister t
     left join entity e
-    on t.lister = e.lister AND e.lister_metadata @> t.lister_metadata;
+    on e.lister_metadata @> t.lister_metadata;
   return;
 end
 $$;
@@ -685,9 +685,8 @@ CREATE TABLE entity (
     homepage text,
     active boolean NOT NULL,
     generated boolean NOT NULL,
-    lister uuid,
     lister_metadata jsonb,
-    doap jsonb,
+    metadata jsonb,
     last_seen timestamp with time zone,
     last_id bigint
 );
@@ -722,8 +721,7 @@ CREATE FUNCTION swh_entity_history_add() RETURNS void
     AS $$
 begin
     insert into entity_history (
-        uuid, parent, name, type, description, homepage, active, generated,
-	lister, lister_metadata, doap, validity
+        uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity
     ) select * from tmp_entity_history;
     return;
 end
@@ -857,11 +855,10 @@ $$;
 CREATE FUNCTION swh_mktemp_entity_lister() RETURNS void
     LANGUAGE sql
     AS $$
-    create temporary table tmp_entity_lister (
-        id bigint,
-        lister uuid,
-	lister_metadata jsonb
-    ) on commit drop;
+  create temporary table tmp_entity_lister (
+    id              bigint,
+    lister_metadata jsonb
+  ) on commit drop;
 $$;
 
 
@@ -1485,10 +1482,10 @@ CREATE FUNCTION swh_update_entity_from_entity_history() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 begin
-    insert into entity (uuid, parent, name, type, description, homepage, active, generated, lister,
-                        lister_metadata, doap, last_seen, last_id)
-      select uuid, parent, name, type, description, homepage, active, generated, lister,
-             lister_metadata, doap, unnest(validity), id
+    insert into entity (uuid, parent, name, type, description, homepage, active, generated,
+      lister_metadata, metadata, last_seen, last_id)
+      select uuid, parent, name, type, description, homepage, active, generated,
+             lister_metadata, metadata, unnest(validity), id
       from entity_history
       where uuid = NEW.uuid
       order by unnest(validity) desc limit 1
@@ -1500,9 +1497,8 @@ begin
       homepage = EXCLUDED.homepage,
       active = EXCLUDED.active,
       generated = EXCLUDED.generated,
-      lister = EXCLUDED.lister,
       lister_metadata = EXCLUDED.lister_metadata,
-      doap = EXCLUDED.doap,
+      metadata = EXCLUDED.metadata,
       last_seen = EXCLUDED.last_seen,
       last_id = EXCLUDED.last_id;
 
@@ -1712,9 +1708,8 @@ CREATE TABLE entity_history (
     homepage text,
     active boolean NOT NULL,
     generated boolean NOT NULL,
-    lister uuid,
     lister_metadata jsonb,
-    doap jsonb,
+    metadata jsonb,
     validity timestamp with time zone[]
 );
 
@@ -1747,7 +1742,7 @@ CREATE TABLE fetch_history (
     origin bigint,
     date timestamp with time zone NOT NULL,
     status boolean,
-    result json,
+    result jsonb,
     stdout text,
     stderr text,
     duration interval
@@ -1782,7 +1777,7 @@ CREATE TABLE list_history (
     entity uuid,
     date timestamp with time zone NOT NULL,
     status boolean,
-    result json,
+    result jsonb,
     stdout text,
     stderr text,
     duration interval
@@ -1817,7 +1812,7 @@ CREATE TABLE listable_entity (
     enabled boolean DEFAULT true NOT NULL,
     list_engine text,
     list_url text,
-    list_params json,
+    list_params jsonb,
     latest_list timestamp with time zone
 );
 
@@ -2148,7 +2143,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-62	2016-03-04 17:06:46.335081+01	Work In Progress
+66	2016-03-21 12:29:58.244995+01	Work In Progress
 \.
 
 
@@ -2216,18 +2211,18 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 -- Data for Name: entity; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	2016-03-04 17:06:46.335081+01	11
+COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-03-21 12:29:58.244995+01	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-03-21 12:29:58.244995+01	11
 \.
 
 
@@ -2243,18 +2238,18 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 -- Data for Name: entity_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister, lister_metadata, doap, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	\N	{"2016-03-04 17:06:46.335081+01"}
+COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-03-21 12:29:58.244995+01"}
 \.
 
 
@@ -2664,6 +2659,13 @@ CREATE INDEX entity_history_uuid_idx ON entity_history USING btree (uuid);
 
 
 --
+-- Name: entity_lister_metadata_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entity_lister_metadata_idx ON entity USING gin (lister_metadata jsonb_path_ops);
+
+
+--
 -- Name: entity_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2783,14 +2785,6 @@ ALTER TABLE ONLY entity_equivalence
 
 ALTER TABLE ONLY entity
     ADD CONSTRAINT entity_last_id_fkey FOREIGN KEY (last_id) REFERENCES entity_history(id);
-
-
---
--- Name: entity_lister_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY entity
-    ADD CONSTRAINT entity_lister_fkey FOREIGN KEY (lister) REFERENCES listable_entity(uuid);
 
 
 --
