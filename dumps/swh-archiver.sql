@@ -51,10 +51,12 @@ COMMENT ON EXTENSION btree_gist IS 'support for indexing common datatypes in GiS
 SET search_path = public, pg_catalog;
 
 --
--- Name: archive_id; Type: DOMAIN; Schema: public; Owner: -
+-- Name: archive_id; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE DOMAIN archive_id AS text;
+CREATE TYPE archive_id AS ENUM (
+    'banco'
+);
 
 
 --
@@ -124,9 +126,9 @@ COMMENT ON COLUMN archive.url IS 'Url identifying the archiver api';
 
 CREATE TABLE content_archive (
     content_id sha1 NOT NULL,
-    archive_id archive_id DEFAULT 'Banco'::text NOT NULL,
-    status archive_status DEFAULT 'present'::archive_status,
-    mtime timestamp with time zone DEFAULT '2016-02-04 15:19:59+01'::timestamp with time zone
+    archive_id archive_id NOT NULL,
+    status archive_status,
+    mtime timestamp with time zone
 );
 
 
@@ -188,7 +190,7 @@ COMMENT ON TABLE dbversion IS 'Schema update tracking';
 --
 
 COPY archive (id, url) FROM stdin;
-Banco	http://banco.softwareheritage.org:5003/
+banco	http://banco.softwareheritage.org:5003/
 \.
 
 
@@ -205,7 +207,7 @@ COPY content_archive (content_id, archive_id, status, mtime) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-1	2016-07-18 15:05:47.235698+02	Work In Progress
+1	2016-07-20 15:52:27.316087+02	Work In Progress
 \.
 
 
