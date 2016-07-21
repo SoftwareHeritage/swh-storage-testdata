@@ -55,6 +55,7 @@ SET search_path = public, pg_catalog;
 --
 
 CREATE TYPE archive_id AS ENUM (
+    'uffizi',
     'banco'
 );
 
@@ -125,10 +126,8 @@ COMMENT ON COLUMN archive.url IS 'Url identifying the archiver api';
 --
 
 CREATE TABLE content_archive (
-    content_id sha1 NOT NULL,
-    archive_id archive_id NOT NULL,
-    status archive_status,
-    mtime timestamp with time zone
+    content_id sha1,
+    copies jsonb
 );
 
 
@@ -147,24 +146,10 @@ COMMENT ON COLUMN content_archive.content_id IS 'content identifier';
 
 
 --
--- Name: COLUMN content_archive.archive_id; Type: COMMENT; Schema: public; Owner: -
+-- Name: COLUMN content_archive.copies; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_archive.archive_id IS 'content whereabouts';
-
-
---
--- Name: COLUMN content_archive.status; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_archive.status IS 'content status';
-
-
---
--- Name: COLUMN content_archive.mtime; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_archive.mtime IS 'last time the content was stored';
+COMMENT ON COLUMN content_archive.copies IS 'map archive_id -> { "status": archive_status, "mtime": epoch timestamp }';
 
 
 --
@@ -198,7 +183,7 @@ banco	http://banco.softwareheritage.org:5003/
 -- Data for Name: content_archive; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_archive (content_id, archive_id, status, mtime) FROM stdin;
+COPY content_archive (content_id, copies) FROM stdin;
 \.
 
 
@@ -207,7 +192,7 @@ COPY content_archive (content_id, archive_id, status, mtime) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-1	2016-07-20 15:52:27.316087+02	Work In Progress
+1	2016-07-21 14:08:25.20269+02	Work In Progress
 \.
 
 
@@ -220,11 +205,11 @@ ALTER TABLE ONLY archive
 
 
 --
--- Name: content_archive_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: content_archive_content_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_archive
-    ADD CONSTRAINT content_archive_pkey PRIMARY KEY (content_id, archive_id);
+    ADD CONSTRAINT content_archive_content_id_key UNIQUE (content_id);
 
 
 --
@@ -233,14 +218,6 @@ ALTER TABLE ONLY content_archive
 
 ALTER TABLE ONLY dbversion
     ADD CONSTRAINT dbversion_pkey PRIMARY KEY (version);
-
-
---
--- Name: content_archive_archive_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY content_archive
-    ADD CONSTRAINT content_archive_archive_id_fkey FOREIGN KEY (archive_id) REFERENCES archive(id);
 
 
 --
