@@ -67,7 +67,8 @@ CREATE TYPE archive_id AS ENUM (
 CREATE TYPE archive_status AS ENUM (
     'missing',
     'ongoing',
-    'present'
+    'present',
+    'corrupted'
 );
 
 
@@ -84,6 +85,20 @@ COMMENT ON TYPE archive_status IS 'Status of a given archive';
 
 CREATE DOMAIN sha1 AS bytea
 	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
+
+
+--
+-- Name: update_num_present(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION update_num_present() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+    NEW.num_present := (select count(*) from jsonb_each(NEW.copies) where value->>'status' = 'present');
+    RETURN new;
+    END;
+$$;
 
 
 SET default_tablespace = '';
@@ -126,8 +141,9 @@ COMMENT ON COLUMN archive.url IS 'Url identifying the archiver api';
 --
 
 CREATE TABLE content_archive (
-    content_id sha1,
-    copies jsonb
+    content_id sha1 NOT NULL,
+    copies jsonb,
+    num_present integer
 );
 
 
@@ -150,6 +166,13 @@ COMMENT ON COLUMN content_archive.content_id IS 'content identifier';
 --
 
 COMMENT ON COLUMN content_archive.copies IS 'map archive_id -> { "status": archive_status, "mtime": epoch timestamp }';
+
+
+--
+-- Name: COLUMN content_archive.num_present; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_archive.num_present IS 'Number of copies marked as present (cache updated via trigger)';
 
 
 --
@@ -183,7 +206,7 @@ banco	http://banco.softwareheritage.org:5003/
 -- Data for Name: content_archive; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_archive (content_id, copies) FROM stdin;
+COPY content_archive (content_id, copies, num_present) FROM stdin;
 \.
 
 
@@ -192,7 +215,7 @@ COPY content_archive (content_id, copies) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-1	2016-07-21 14:08:25.20269+02	Work In Progress
+3	2016-08-04 16:27:58.892664+02	Work In Progress
 \.
 
 
@@ -205,11 +228,11 @@ ALTER TABLE ONLY archive
 
 
 --
--- Name: content_archive_content_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: content_archive_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_archive
-    ADD CONSTRAINT content_archive_content_id_key UNIQUE (content_id);
+    ADD CONSTRAINT content_archive_pkey PRIMARY KEY (content_id);
 
 
 --
@@ -218,6 +241,20 @@ ALTER TABLE ONLY content_archive
 
 ALTER TABLE ONLY dbversion
     ADD CONSTRAINT dbversion_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: content_archive_num_present_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX content_archive_num_present_idx ON content_archive USING btree (num_present);
+
+
+--
+-- Name: update_num_present; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_num_present BEFORE INSERT OR UPDATE OF copies ON content_archive FOR EACH ROW EXECUTE PROCEDURE update_num_present();
 
 
 --
