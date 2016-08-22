@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.5.3
--- Dumped by pg_dump version 9.5.3
+-- Dumped from database version 9.5.4
+-- Dumped by pg_dump version 9.5.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -232,6 +232,24 @@ CREATE TYPE object_found AS (
 
 
 --
+-- Name: origin_visit_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE origin_visit_status AS ENUM (
+    'ongoing',
+    'full',
+    'partial'
+);
+
+
+--
+-- Name: TYPE origin_visit_status; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TYPE origin_visit_status IS 'Possible visit status';
+
+
+--
 -- Name: release_entry; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -248,7 +266,8 @@ CREATE TYPE release_entry AS (
 	author_id bigint,
 	author_fullname bytea,
 	author_name bytea,
-	author_email bytea
+	author_email bytea,
+	object_id bigint
 );
 
 
@@ -289,8 +308,114 @@ CREATE TYPE revision_entry AS (
 	committer_email bytea,
 	metadata jsonb,
 	synthetic boolean,
-	parents bytea[]
+	parents bytea[],
+	object_id bigint
 );
+
+
+--
+-- Name: notify_new_content(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION notify_new_content() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+  begin
+    perform pg_notify('new_content', encode(new.sha1, 'hex'));
+    return null;
+  end;
+$$;
+
+
+--
+-- Name: notify_new_directory(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION notify_new_directory() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+  begin
+    perform pg_notify('new_directory', encode(new.id, 'hex'));
+    return null;
+  end;
+$$;
+
+
+--
+-- Name: notify_new_origin(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION notify_new_origin() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+  begin
+    perform pg_notify('new_origin', new.id::text);
+    return null;
+  end;
+$$;
+
+
+--
+-- Name: notify_new_origin_visit(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION notify_new_origin_visit() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+  begin
+    perform pg_notify('new_origin_visit', json_build_object(
+      'origin', new.origin,
+      'visit', new.visit
+    )::text);
+    return null;
+  end;
+$$;
+
+
+--
+-- Name: notify_new_release(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION notify_new_release() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+  begin
+    perform pg_notify('new_release', encode(new.id, 'hex'));
+    return null;
+  end;
+$$;
+
+
+--
+-- Name: notify_new_revision(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION notify_new_revision() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+  begin
+    perform pg_notify('new_revision', encode(new.id, 'hex'));
+    return null;
+  end;
+$$;
+
+
+--
+-- Name: notify_new_skipped_content(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION notify_new_skipped_content() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+  begin
+  perform pg_notify('new_skipped_content', json_build_object(
+      'sha1', encode(new.sha1, 'hex'),
+      'sha1_git', encode(new.sha1_git, 'hex'),
+      'sha256', encode(new.sha256, 'hex')
+    )::text);
+    return null;
+  end;
+$$;
 
 
 --
@@ -432,6 +557,19 @@ begin
 
     return coc;  -- might be NULL
 end
+$$;
+
+
+--
+-- Name: swh_content_list_by_object_id(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF content
+    LANGUAGE sql STABLE
+    AS $$
+    select * from content
+    where object_id > min_excl and object_id <= max_incl
+    order by object_id;
 $$;
 
 
@@ -874,7 +1012,7 @@ CREATE FUNCTION swh_mktemp_occurrence_history() RETURNS void
     AS $$
     create temporary table tmp_occurrence_history(
         like occurrence_history including defaults,
-        date timestamptz not null
+        visit bigint not null
     ) on commit drop;
     alter table tmp_occurrence_history
       drop column visits,
@@ -1016,30 +1154,10 @@ CREATE FUNCTION swh_occurrence_history_add() RETURNS void
 declare
   origin_id origin.id%type;
 begin
-  -- Create new visits
-  with current_visits as (
-    select distinct origin, date from tmp_occurrence_history
-  ),
-  new_visits as (
-      select origin, date, (select coalesce(max(visit), 0)
-                            from origin_visit ov
-                            where ov.origin = cv.origin) as max_visit
-        from current_visits cv
-        where not exists (select 1 from origin_visit ov
-                          where ov.origin = cv.origin and
-                                ov.date = cv.date)
-  )
-  insert into origin_visit (origin, date, visit)
-    select origin, date, max_visit + row_number() over
-                                     (partition by origin
-                                                order by origin, date)
-    from new_visits;
-
   -- Create or update occurrence_history
   with occurrence_history_id_visit as (
-    select tmp_occurrence_history.*, object_id, visits, visit from tmp_occurrence_history
+    select tmp_occurrence_history.*, object_id, visits from tmp_occurrence_history
     left join occurrence_history using(origin, branch, target, target_type)
-    left join origin_visit using(origin, date)
   ),
   occurrences_to_update as (
     select object_id, visit from occurrence_history_id_visit where object_id is not null
@@ -1105,6 +1223,24 @@ CREATE FUNCTION swh_occurrence_update_for_origin(origin_id bigint) RETURNS void
            where origin = origin_id
            order by date desc
            limit 1) = any(visits);
+$$;
+
+
+--
+-- Name: swh_origin_visit_add(bigint, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_origin_visit_add(origin_id bigint, date timestamp with time zone) RETURNS bigint
+    LANGUAGE sql
+    AS $$
+  with last_known_visit as (
+    select coalesce(max(visit), 0) as visit
+    from origin_visit
+    where origin = origin_id
+  )
+  insert into origin_visit (origin, date, visit, status)
+  values (origin_id, date, (select visit from last_known_visit) + 1, 'ongoing')
+  returning visit;
 $$;
 
 
@@ -1183,7 +1319,7 @@ CREATE FUNCTION swh_release_get() RETURNS SETOF release_entry
 begin
     return query
         select r.id, r.target, r.target_type, r.date, r.date_offset, r.date_neg_utc_offset, r.name, r.comment,
-               r.synthetic, p.id as author_id, p.fullname as author_fullname, p.name as author_name, p.email as author_email
+               r.synthetic, p.id as author_id, p.fullname as author_fullname, p.name as author_name, p.email as author_email, r.object_id
         from tmp_bytea t
         inner join release r on t.id = r.id
         inner join person p on p.id = r.author;
@@ -1201,11 +1337,30 @@ CREATE FUNCTION swh_release_get_by(origin_id bigint) RETURNS SETOF release_entry
     AS $$
    select r.id, r.target, r.target_type, r.date, r.date_offset, r.date_neg_utc_offset,
         r.name, r.comment, r.synthetic, a.id as author_id, a.fullname as author_fullname,
-        a.name as author_name, a.email as author_email
+        a.name as author_name, a.email as author_email, r.object_id
     from release r
     inner join occurrence_history occ on occ.target = r.target
     left join person a on a.id = r.author
     where occ.origin = origin_id and occ.target_type = 'revision' and r.target_type = 'revision';
+$$;
+
+
+--
+-- Name: swh_release_list_by_object_id(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_release_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF release_entry
+    LANGUAGE sql STABLE
+    AS $$
+    with rels as (
+        select * from release
+        where object_id > min_excl and object_id <= max_incl
+    )
+    select r.id, r.target, r.target_type, r.date, r.date_offset, r.date_neg_utc_offset, r.name, r.comment,
+           r.synthetic, p.id as author_id, p.fullname as author_fullname, p.name as author_name, p.email as author_email, r.object_id
+    from rels r
+    left join person p on p.id = r.author
+    order by r.object_id;
 $$;
 
 
@@ -1289,7 +1444,7 @@ begin
                r.type, r.directory, r.message,
                a.id, a.fullname, a.name, a.email, c.id, c.fullname, c.name, c.email, r.metadata, r.synthetic,
          array(select rh.parent_id::bytea from revision_history rh where rh.id = t.id order by rh.parent_rank)
-                   as parents
+                   as parents, r.object_id
         from tmp_bytea t
         left join revision r on t.id = r.id
         left join person a on a.id = r.author
@@ -1314,7 +1469,7 @@ CREATE FUNCTION swh_revision_get_by(origin_id bigint, branch_name bytea DEFAULT 
             from revision_history rh
             where rh.id = r.id
             order by rh.parent_rank
-        ) as parents
+        ) as parents, r.object_id
     from swh_occurrence_get_by(origin_id, branch_name, date) as occ
     inner join revision r on occ.target = r.id
     left join person a on a.id = r.author
@@ -1344,6 +1499,30 @@ CREATE FUNCTION swh_revision_list(root_revisions bytea[], num_revs bigint DEFAUL
                  order by rh.parent_rank
                 ) as parent
     from rev_list;
+$$;
+
+
+--
+-- Name: swh_revision_list_by_object_id(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF revision_entry
+    LANGUAGE sql STABLE
+    AS $$
+    with revs as (
+        select * from revision
+        where object_id > min_excl and object_id <= max_incl
+    )
+    select r.id, r.date, r.date_offset, r.date_neg_utc_offset,
+           r.committer_date, r.committer_date_offset, r.committer_date_neg_utc_offset,
+           r.type, r.directory, r.message,
+           a.id, a.fullname, a.name, a.email, c.id, c.fullname, c.name, c.email, r.metadata, r.synthetic,
+           array(select rh.parent_id::bytea from revision_history rh where rh.id = r.id order by rh.parent_rank)
+               as parents, r.object_id
+    from revs r
+    left join person a on a.id = r.author
+    left join person c on c.id = r.committer
+    order by r.object_id;
 $$;
 
 
@@ -1384,7 +1563,7 @@ CREATE FUNCTION swh_revision_log(root_revisions bytea[], num_revs bigint DEFAULT
            r.type, r.directory, r.message,
            a.id, a.fullname, a.name, a.email,
            c.id, c.fullname, c.name, c.email,
-           r.metadata, r.synthetic, t.parents
+           r.metadata, r.synthetic, t.parents, r.object_id
     from swh_revision_list(root_revisions, num_revs) as t
     left join revision r on t.id = r.id
     left join person a on a.id = r.author
@@ -1520,8 +1699,37 @@ $$;
 CREATE TABLE origin_visit (
     origin bigint NOT NULL,
     visit bigint NOT NULL,
-    date timestamp with time zone NOT NULL
+    date timestamp with time zone NOT NULL,
+    status origin_visit_status NOT NULL
 );
+
+
+--
+-- Name: COLUMN origin_visit.origin; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN origin_visit.origin IS 'Visited origin';
+
+
+--
+-- Name: COLUMN origin_visit.visit; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN origin_visit.visit IS 'Visit number the visit occurred for that origin';
+
+
+--
+-- Name: COLUMN origin_visit.date; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN origin_visit.date IS 'Visit date for that origin';
+
+
+--
+-- Name: COLUMN origin_visit.status; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN origin_visit.status IS 'Visit status for that origin';
 
 
 --
@@ -1554,7 +1762,7 @@ $$;
 CREATE FUNCTION swh_visit_get(origin bigint) RETURNS origin_visit
     LANGUAGE sql STABLE
     AS $$
-    select origin, visit, date
+    select origin, visit, date, status
     from origin_visit
     where origin=origin
     order by date desc
@@ -2164,7 +2372,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-71	2016-08-04 16:27:59.770821+02	Work In Progress
+75	2016-08-22 15:50:36.237357+02	Work In Progress
 \.
 
 
@@ -2233,17 +2441,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-08-04 16:27:59.770821+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-08-04 16:27:59.770821+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-08-22 15:50:36.237357+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-08-22 15:50:36.237357+02	11
 \.
 
 
@@ -2260,17 +2468,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-08-04 16:27:59.770821+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-08-22 15:50:36.237357+02"}
 \.
 
 
@@ -2362,7 +2570,7 @@ SELECT pg_catalog.setval('origin_id_seq', 1, false);
 -- Data for Name: origin_visit; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY origin_visit (origin, visit, date) FROM stdin;
+COPY origin_visit (origin, visit, date, status) FROM stdin;
 \.
 
 
@@ -2831,6 +3039,55 @@ CREATE UNIQUE INDEX skipped_content_sha1_idx ON skipped_content USING btree (sha
 --
 
 CREATE UNIQUE INDEX skipped_content_sha256_idx ON skipped_content USING btree (sha256);
+
+
+--
+-- Name: notify_new_content; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER notify_new_content AFTER INSERT ON content FOR EACH ROW EXECUTE PROCEDURE notify_new_content();
+
+
+--
+-- Name: notify_new_directory; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER notify_new_directory AFTER INSERT ON directory FOR EACH ROW EXECUTE PROCEDURE notify_new_directory();
+
+
+--
+-- Name: notify_new_origin; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER notify_new_origin AFTER INSERT ON origin FOR EACH ROW EXECUTE PROCEDURE notify_new_origin();
+
+
+--
+-- Name: notify_new_origin_visit; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER notify_new_origin_visit AFTER INSERT ON origin_visit FOR EACH ROW EXECUTE PROCEDURE notify_new_origin_visit();
+
+
+--
+-- Name: notify_new_release; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER notify_new_release AFTER INSERT ON release FOR EACH ROW EXECUTE PROCEDURE notify_new_release();
+
+
+--
+-- Name: notify_new_revision; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER notify_new_revision AFTER INSERT ON revision FOR EACH ROW EXECUTE PROCEDURE notify_new_revision();
+
+
+--
+-- Name: notify_new_skipped_content; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER notify_new_skipped_content AFTER INSERT ON skipped_content FOR EACH ROW EXECUTE PROCEDURE notify_new_skipped_content();
 
 
 --
