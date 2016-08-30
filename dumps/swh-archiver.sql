@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.5.3
--- Dumped by pg_dump version 9.5.3
+-- Dumped from database version 9.5.4
+-- Dumped by pg_dump version 9.5.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -215,7 +215,7 @@ COPY content_archive (content_id, copies, num_present) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-3	2016-08-04 16:27:58.892664+02	Work In Progress
+3	2016-08-30 17:26:05.177411+02	Work In Progress
 \.
 
 
