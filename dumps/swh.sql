@@ -1778,6 +1778,28 @@ $$;
 
 
 --
+-- Name: cache_content_revision; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE cache_content_revision (
+    content sha1_git NOT NULL,
+    revision sha1_git NOT NULL,
+    path unix_path NOT NULL
+);
+
+
+--
+-- Name: cache_revision_origin; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE cache_revision_origin (
+    revision sha1_git NOT NULL,
+    origin bigint NOT NULL,
+    visit bigint NOT NULL
+);
+
+
+--
 -- Name: content_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -2361,6 +2383,22 @@ ALTER TABLE ONLY skipped_content ALTER COLUMN object_id SET DEFAULT nextval('ski
 
 
 --
+-- Data for Name: cache_content_revision; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY cache_content_revision (content, revision, path) FROM stdin;
+\.
+
+
+--
+-- Data for Name: cache_revision_origin; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY cache_revision_origin (revision, origin, visit) FROM stdin;
+\.
+
+
+--
 -- Data for Name: content; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -2380,7 +2418,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-76	2016-08-24 14:24:12.618545+02	Work In Progress
+77	2016-08-30 14:58:44.782973+02	Work In Progress
 \.
 
 
@@ -2449,17 +2487,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-08-24 14:24:12.618545+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-08-24 14:24:12.618545+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-08-30 14:58:44.782973+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-08-30 14:58:44.782973+02	11
 \.
 
 
@@ -2476,17 +2514,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-08-24 14:24:12.618545+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-08-30 14:58:44.782973+02"}
 \.
 
 
@@ -2648,6 +2686,22 @@ COPY skipped_content (sha1, sha1_git, sha256, length, ctime, status, reason, ori
 --
 
 SELECT pg_catalog.setval('skipped_content_object_id_seq', 1, false);
+
+
+--
+-- Name: cache_content_revision_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY cache_content_revision
+    ADD CONSTRAINT cache_content_revision_pkey PRIMARY KEY (content, revision, path);
+
+
+--
+-- Name: cache_revision_origin_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY cache_revision_origin
+    ADD CONSTRAINT cache_revision_origin_pkey PRIMARY KEY (revision, origin, visit);
 
 
 --
@@ -2816,6 +2870,27 @@ ALTER TABLE ONLY revision
 
 ALTER TABLE ONLY skipped_content
     ADD CONSTRAINT skipped_content_sha1_sha1_git_sha256_key UNIQUE (sha1, sha1_git, sha256);
+
+
+--
+-- Name: cache_content_revision_content_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX cache_content_revision_content_idx ON cache_content_revision USING btree (content);
+
+
+--
+-- Name: cache_content_revision_revision_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX cache_content_revision_revision_idx ON cache_content_revision USING btree (revision);
+
+
+--
+-- Name: cache_revision_origin_revision_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX cache_revision_origin_revision_idx ON cache_revision_origin USING btree (revision);
 
 
 --
@@ -3103,6 +3178,38 @@ CREATE TRIGGER notify_new_skipped_content AFTER INSERT ON skipped_content FOR EA
 --
 
 CREATE TRIGGER update_entity AFTER INSERT OR UPDATE ON entity_history FOR EACH ROW EXECUTE PROCEDURE swh_update_entity_from_entity_history();
+
+
+--
+-- Name: cache_content_revision_content_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY cache_content_revision
+    ADD CONSTRAINT cache_content_revision_content_fkey FOREIGN KEY (content) REFERENCES content(sha1_git);
+
+
+--
+-- Name: cache_content_revision_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY cache_content_revision
+    ADD CONSTRAINT cache_content_revision_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
+
+
+--
+-- Name: cache_revision_origin_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY cache_revision_origin
+    ADD CONSTRAINT cache_revision_origin_origin_fkey FOREIGN KEY (origin, visit) REFERENCES origin_visit(origin, visit);
+
+
+--
+-- Name: cache_revision_origin_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY cache_revision_origin
+    ADD CONSTRAINT cache_revision_origin_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
 
 
 --
