@@ -51,16 +51,6 @@ COMMENT ON EXTENSION btree_gist IS 'support for indexing common datatypes in GiS
 SET search_path = public, pg_catalog;
 
 --
--- Name: archive_id; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE archive_id AS ENUM (
-    'uffizi',
-    'banco'
-);
-
-
---
 -- Name: archive_status; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -110,8 +100,7 @@ SET default_with_oids = false;
 --
 
 CREATE TABLE archive (
-    id archive_id NOT NULL,
-    url text
+    id text NOT NULL
 );
 
 
@@ -127,13 +116,6 @@ COMMENT ON TABLE archive IS 'Possible archives';
 --
 
 COMMENT ON COLUMN archive.id IS 'Short identifier for the archive';
-
-
---
--- Name: COLUMN archive.url; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN archive.url IS 'Url identifying the archiver api';
 
 
 --
@@ -197,8 +179,9 @@ COMMENT ON TABLE dbversion IS 'Schema update tracking';
 -- Data for Name: archive; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY archive (id, url) FROM stdin;
-banco	http://banco.softwareheritage.org:5003/
+COPY archive (id) FROM stdin;
+banco
+azure
 \.
 
 
@@ -215,7 +198,7 @@ COPY content_archive (content_id, copies, num_present) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-3	2016-09-01 11:23:45.125891+02	Work In Progress
+4	2016-09-14 12:09:13.249802+02	Work In Progress
 \.
 
 

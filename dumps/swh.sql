@@ -76,28 +76,14 @@ CREATE TYPE content_dir AS (
 
 
 --
--- Name: object_type; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE object_type AS ENUM (
-    'content',
-    'directory',
-    'revision',
-    'release'
-);
-
-
---
 -- Name: content_provenance; Type: TYPE; Schema: public; Owner: -
 --
 
 CREATE TYPE content_provenance AS (
-	origin_url text,
-	origin_type text,
-	date timestamp with time zone,
-	branch bytea,
-	target sha1_git,
-	target_type object_type,
+	content sha1_git,
+	revision sha1_git,
+	origin bigint,
+	visit bigint,
 	path unix_path
 );
 
@@ -228,6 +214,18 @@ CREATE TYPE entity_id AS (
 
 
 --
+-- Name: object_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE object_type AS ENUM (
+    'content',
+    'directory',
+    'revision',
+    'release'
+);
+
+
+--
 -- Name: object_found; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -237,27 +235,6 @@ CREATE TYPE object_found AS (
 	id bytea,
 	object_id bigint
 );
-
-
---
--- Name: occurrence_visit; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE occurrence_visit AS (
-	origin bigint,
-	visit bigint,
-	branch bytea,
-	target sha1_git,
-	target_type object_type,
-	object_id bigint
-);
-
-
---
--- Name: TYPE occurrence_visit; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TYPE occurrence_visit IS 'Occurrence visit information';
 
 
 --
@@ -445,6 +422,30 @@ CREATE FUNCTION notify_new_skipped_content() RETURNS trigger
     return null;
   end;
 $$;
+
+
+--
+-- Name: swh_cache_content_get_by_batch(bytea, bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_cache_content_get_by_batch(last_content bytea, batch_limit bigint) RETURNS SETOF content_signature
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT DISTINCT c.sha1, c.sha1_git, c.sha256
+    FROM cache_content_revision ccr
+    INNER JOIN content as c
+    ON ccr.content = c.sha1_git
+    WHERE ccr.content > last_content
+    ORDER BY c.sha1_git
+    LIMIT batch_limit
+$$;
+
+
+--
+-- Name: FUNCTION swh_cache_content_get_by_batch(last_content bytea, batch_limit bigint); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_cache_content_get_by_batch(last_content bytea, batch_limit bigint) IS 'Retrieve batch of distinct sha1_git with size batch_limit from last_content';
 
 
 --
@@ -649,18 +650,10 @@ $$;
 CREATE FUNCTION swh_content_find_provenance(content_id sha1_git) RETURNS SETOF content_provenance
     LANGUAGE sql
     AS $$
-    with content_partial_provenance_info as (
-        select ccr.content, ccr.revision, cro.origin, cro.visit, ccr.path
-        from cache_content_revision ccr
-        inner join cache_revision_origin cro using(revision)
-        where ccr.content=content_id
-    )
-    select ori.url as origin_url, ori.type as origin_type,
-           ov.date, occ.branch, occ.target, occ.target_type, info.path
-    from content_partial_provenance_info as info
-    inner join origin ori on ori.id = info.origin
-    inner join origin_visit ov on ori.id = ov.origin and ov.visit = info.visit
-    inner join lateral swh_occurrence_history_per_origin(ori.id) as occ on (occ.origin=ov.origin and occ.visit=ov.visit);
+    select ccr.content, ccr.revision, cro.origin, cro.visit, ccr.path
+    from cache_content_revision ccr
+    inner join cache_revision_origin cro using(revision)
+    where ccr.content=content_id
 $$;
 
 
@@ -668,7 +661,7 @@ $$;
 -- Name: FUNCTION swh_content_find_provenance(content_id sha1_git); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_find_provenance(content_id sha1_git) IS 'Find a provenance information for a content';
+COMMENT ON FUNCTION swh_content_find_provenance(content_id sha1_git) IS 'Given a content, provide provenance information on it';
 
 
 --
@@ -1320,26 +1313,6 @@ begin
   return;
 end
 $$;
-
-
---
--- Name: swh_occurrence_history_per_origin(bigint, object_type); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_occurrence_history_per_origin(origin_id bigint, type_target object_type DEFAULT 'revision'::object_type) RETURNS SETOF occurrence_visit
-    LANGUAGE sql
-    AS $$
-    select origin, unnest(visits) as visit, branch, target, target_type, object_id
-    from occurrence_history
-    where origin=origin_id and target_type=type_target
-$$;
-
-
---
--- Name: FUNCTION swh_occurrence_history_per_origin(origin_id bigint, type_target object_type); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_occurrence_history_per_origin(origin_id bigint, type_target object_type) IS 'List occurrence_history per origin and target_type';
 
 
 --
@@ -2601,7 +2574,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-79	2016-09-01 11:23:46.730798+02	Work In Progress
+80	2016-09-14 12:09:14.835479+02	Work In Progress
 \.
 
 
@@ -2670,17 +2643,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-09-01 11:23:46.730798+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-09-01 11:23:46.730798+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-09-14 12:09:14.835479+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	11
 \.
 
 
@@ -2697,17 +2670,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-09-01 11:23:46.730798+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
 \.
 
 
