@@ -78,6 +78,56 @@ CREATE DOMAIN sha1 AS bytea
 
 
 --
+-- Name: swh_content_archive_missing(text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_archive_missing(backend_name text) RETURNS SETOF sha1
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select content_id
+        from tmp_content_archive tmp where exists (
+            select 1
+            from content_archive c
+            where tmp.content_id = c.content_id
+                and (not c.copies ? backend_name
+                     or c.copies @> jsonb_build_object(backend_name, '{"status": "missing"}'::jsonb))
+        );
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_archive_missing(backend_name text); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_archive_missing(backend_name text) IS 'Filter missing data from a specific backend';
+
+
+--
+-- Name: swh_mktemp_content_archive(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_content_archive() RETURNS void
+    LANGUAGE sql
+    AS $$
+    create temporary table tmp_content_archive (
+        like content_archive including defaults
+    ) on commit drop;
+    alter table tmp_content_archive drop column copies;
+    alter table tmp_content_archive drop column num_present;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_content_archive(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_content_archive() IS 'Create temporary table content_archive';
+
+
+--
 -- Name: update_num_present(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -198,7 +248,7 @@ COPY content_archive (content_id, copies, num_present) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-4	2016-09-14 12:09:13.249802+02	Work In Progress
+4	2016-09-22 18:52:05.313962+02	Work In Progress
 \.
 
 

@@ -425,66 +425,99 @@ $$;
 
 
 --
--- Name: swh_cache_content_get_by_batch(bytea, bigint); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_cache_content_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_cache_content_get_by_batch(last_content bytea, batch_limit bigint) RETURNS SETOF content_signature
+CREATE FUNCTION swh_cache_content_get() RETURNS SETOF content_signature
     LANGUAGE sql STABLE
     AS $$
     SELECT DISTINCT c.sha1, c.sha1_git, c.sha256
     FROM cache_content_revision ccr
     INNER JOIN content as c
     ON ccr.content = c.sha1_git
-    WHERE ccr.content > last_content
-    ORDER BY c.sha1_git
-    LIMIT batch_limit
 $$;
 
 
 --
--- Name: FUNCTION swh_cache_content_get_by_batch(last_content bytea, batch_limit bigint); Type: COMMENT; Schema: public; Owner: -
+-- Name: FUNCTION swh_cache_content_get(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_cache_content_get_by_batch(last_content bytea, batch_limit bigint) IS 'Retrieve batch of distinct sha1_git with size batch_limit from last_content';
+COMMENT ON FUNCTION swh_cache_content_get() IS 'Retrieve batch of distinct sha1_git with size batch_limit from last_content';
 
 
 --
--- Name: swh_cache_content_revision_add(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_cache_content_revision_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_cache_content_revision_add(revision_id sha1_git) RETURNS void
+CREATE FUNCTION swh_cache_content_revision_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 declare
-  rev sha1_git;
+  cnt bigint;
+  d sha1_git;
 begin
-    select revision from cache_content_revision where revision=revision_id limit 1
-    into rev;
+  delete from tmp_bytea t where exists (select 1 from cache_content_revision_processed ccrp where t.id = ccrp.revision);
 
-    if rev is NULL then
+  select count(*) from tmp_bytea into cnt;
+  if cnt <> 0 then
+    create temporary table tmp_ccr (
+        content sha1_git,
+        directory sha1_git,
+        path unix_path
+    ) on commit drop;
 
-      with contents_to_cache as (
-          select sha1_git, name
-          from swh_directory_walk((select directory from revision where id=revision_id))
-          where type='file'
-      )
-      insert into cache_content_revision (content, revision, path)
-      select sha1_git, revision_id, name
-      from contents_to_cache;
-      return;
+    create temporary table tmp_ccrd (
+        directory sha1_git,
+        revision sha1_git
+    ) on commit drop;
 
-    else
-      return;
-    end if;
+    insert into tmp_ccrd
+      select directory, id as revision
+      from tmp_bytea
+      inner join revision using(id);
+
+    insert into cache_content_revision_processed
+      select distinct id from tmp_bytea;
+
+    for d in
+      select distinct directory from tmp_ccrd
+    loop
+      insert into tmp_ccr
+        select sha1_git as content, d as directory, name as path
+        from swh_directory_walk(d)
+        where type='file';
+    end loop;
+
+    with revision_contents as (
+      select content, false as blacklisted, array_agg(ARRAY[revision::bytea, path::bytea]) as revision_paths
+      from tmp_ccr
+      inner join tmp_ccrd using (directory)
+      group by content
+    ), updated_cache_entries as (
+      update cache_content_revision ccr
+      set revision_paths = ccr.revision_paths || rc.revision_paths
+      from revision_contents rc
+      where ccr.content = rc.content and ccr.blacklisted = false
+      returning ccr.content
+    ) insert into cache_content_revision
+      select * from revision_contents rc
+      where not exists (select 1 from updated_cache_entries uce where uce.content = rc.content)
+      on conflict (content) do update
+        set revision_paths = cache_content_revision.revision_paths || EXCLUDED.revision_paths
+        where cache_content_revision.blacklisted = false;
+    return;
+  else
+    return;
+  end if;
 end
 $$;
 
 
 --
--- Name: FUNCTION swh_cache_content_revision_add(revision_id sha1_git); Type: COMMENT; Schema: public; Owner: -
+-- Name: FUNCTION swh_cache_content_revision_add(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_cache_content_revision_add(revision_id sha1_git) IS 'Cache the specified revision directory contents into cache_content_revision';
+COMMENT ON FUNCTION swh_cache_content_revision_add() IS 'Cache the revisions from tmp_bytea into cache_content_revision';
 
 
 --
@@ -650,10 +683,18 @@ $$;
 CREATE FUNCTION swh_content_find_provenance(content_id sha1_git) RETURNS SETOF content_provenance
     LANGUAGE sql
     AS $$
-    select ccr.content, ccr.revision, cro.origin, cro.visit, ccr.path
-    from cache_content_revision ccr
+    with subscripted_paths as (
+        select content, revision_paths, generate_subscripts(revision_paths, 1) as s
+        from cache_content_revision
+        where content = content_id
+    ),
+    cleaned_up_contents as (
+        select content, revision_paths[s][1]::sha1_git as revision, revision_paths[s][2]::unix_path as path
+        from subscripted_paths
+    )
+    select cuc.content, cuc.revision, cro.origin, cro.visit, cuc.path
+    from cleaned_up_contents cuc
     inner join cache_revision_origin cro using(revision)
-    where ccr.content=content_id
 $$;
 
 
@@ -1939,8 +1980,17 @@ $$;
 
 CREATE TABLE cache_content_revision (
     content sha1_git NOT NULL,
-    revision sha1_git NOT NULL,
-    path unix_path NOT NULL
+    blacklisted boolean DEFAULT false,
+    revision_paths bytea[]
+);
+
+
+--
+-- Name: cache_content_revision_processed; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE cache_content_revision_processed (
+    revision sha1_git NOT NULL
 );
 
 
@@ -2542,7 +2592,15 @@ ALTER TABLE ONLY skipped_content ALTER COLUMN object_id SET DEFAULT nextval('ski
 -- Data for Name: cache_content_revision; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY cache_content_revision (content, revision, path) FROM stdin;
+COPY cache_content_revision (content, blacklisted, revision_paths) FROM stdin;
+\.
+
+
+--
+-- Data for Name: cache_content_revision_processed; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY cache_content_revision_processed (revision) FROM stdin;
 \.
 
 
@@ -2574,7 +2632,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-80	2016-09-14 12:09:14.835479+02	Work In Progress
+84	2016-09-22 18:52:06.164125+02	Work In Progress
 \.
 
 
@@ -2643,17 +2701,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-09-14 12:09:14.835479+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-09-14 12:09:14.835479+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-09-22 18:52:06.164125+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-09-22 18:52:06.164125+02	11
 \.
 
 
@@ -2670,17 +2728,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-09-14 12:09:14.835479+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-09-22 18:52:06.164125+02"}
 \.
 
 
@@ -2849,7 +2907,15 @@ SELECT pg_catalog.setval('skipped_content_object_id_seq', 1, false);
 --
 
 ALTER TABLE ONLY cache_content_revision
-    ADD CONSTRAINT cache_content_revision_pkey PRIMARY KEY (content, revision, path);
+    ADD CONSTRAINT cache_content_revision_pkey PRIMARY KEY (content);
+
+
+--
+-- Name: cache_content_revision_processed_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY cache_content_revision_processed
+    ADD CONSTRAINT cache_content_revision_processed_pkey PRIMARY KEY (revision);
 
 
 --
@@ -3026,20 +3092,6 @@ ALTER TABLE ONLY revision
 
 ALTER TABLE ONLY skipped_content
     ADD CONSTRAINT skipped_content_sha1_sha1_git_sha256_key UNIQUE (sha1, sha1_git, sha256);
-
-
---
--- Name: cache_content_revision_content_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX cache_content_revision_content_idx ON cache_content_revision USING btree (content);
-
-
---
--- Name: cache_content_revision_revision_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX cache_content_revision_revision_idx ON cache_content_revision USING btree (revision);
 
 
 --
@@ -3345,11 +3397,11 @@ ALTER TABLE ONLY cache_content_revision
 
 
 --
--- Name: cache_content_revision_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: cache_content_revision_processed_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY cache_content_revision
-    ADD CONSTRAINT cache_content_revision_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
+ALTER TABLE ONLY cache_content_revision_processed
+    ADD CONSTRAINT cache_content_revision_processed_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
 
 
 --
