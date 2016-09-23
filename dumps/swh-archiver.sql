@@ -106,6 +106,32 @@ COMMENT ON FUNCTION swh_content_archive_missing(backend_name text) IS 'Filter mi
 
 
 --
+-- Name: swh_content_archive_unknown(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_archive_unknown() RETURNS SETOF sha1
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select content_id
+        from tmp_content_archive tmp where not exists (
+            select 1
+            from content_archive c
+            where tmp.content_id = c.content_id
+        );
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_archive_unknown(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_archive_unknown() IS 'Retrieve list of unknown sha1s';
+
+
+--
 -- Name: swh_mktemp_content_archive(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -248,7 +274,7 @@ COPY content_archive (content_id, copies, num_present) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-4	2016-09-22 18:52:05.313962+02	Work In Progress
+4	2016-09-23 14:04:30.79479+02	Work In Progress
 \.
 
 
