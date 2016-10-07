@@ -51,11 +51,39 @@ COMMENT ON EXTENSION btree_gist IS 'support for indexing common datatypes in GiS
 SET search_path = public, pg_catalog;
 
 --
+-- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
+--
+
+CREATE DOMAIN sha1 AS bytea
+	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
+
+
+--
 -- Name: sha1_git; Type: DOMAIN; Schema: public; Owner: -
 --
 
 CREATE DOMAIN sha1_git AS bytea
 	CONSTRAINT sha1_git_check CHECK ((length(VALUE) = 20));
+
+
+--
+-- Name: sha256; Type: DOMAIN; Schema: public; Owner: -
+--
+
+CREATE DOMAIN sha256 AS bytea
+	CONSTRAINT sha256_check CHECK ((length(VALUE) = 32));
+
+
+--
+-- Name: cache_content_signature; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE cache_content_signature AS (
+	sha1 sha1,
+	sha1_git sha1_git,
+	sha256 sha256,
+	revision_paths bytea[]
+);
 
 
 --
@@ -93,22 +121,6 @@ CREATE TYPE content_provenance AS (
 --
 
 COMMENT ON TYPE content_provenance IS 'Provenance information on content';
-
-
---
--- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
---
-
-CREATE DOMAIN sha1 AS bytea
-	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
-
-
---
--- Name: sha256; Type: DOMAIN; Schema: public; Owner: -
---
-
-CREATE DOMAIN sha256 AS bytea
-	CONSTRAINT sha256_check CHECK ((length(VALUE) = 32));
 
 
 --
@@ -425,13 +437,35 @@ $$;
 
 
 --
--- Name: swh_cache_content_get(); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_cache_content_get(sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_cache_content_get() RETURNS SETOF content_signature
+CREATE FUNCTION swh_cache_content_get(target sha1_git) RETURNS SETOF cache_content_signature
     LANGUAGE sql STABLE
     AS $$
-    SELECT DISTINCT c.sha1, c.sha1_git, c.sha256
+    SELECT c.sha1, c.sha1_git, c.sha256, ccr.revision_paths
+    FROM cache_content_revision ccr
+    INNER JOIN content as c
+    ON ccr.content = c.sha1_git
+    where ccr.content = target
+$$;
+
+
+--
+-- Name: FUNCTION swh_cache_content_get(target sha1_git); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_cache_content_get(target sha1_git) IS 'Retrieve cache content information';
+
+
+--
+-- Name: swh_cache_content_get_all(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_cache_content_get_all() RETURNS SETOF cache_content_signature
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT c.sha1, c.sha1_git, c.sha256, ccr.revision_paths
     FROM cache_content_revision ccr
     INNER JOIN content as c
     ON ccr.content = c.sha1_git
@@ -439,10 +473,10 @@ $$;
 
 
 --
--- Name: FUNCTION swh_cache_content_get(); Type: COMMENT; Schema: public; Owner: -
+-- Name: FUNCTION swh_cache_content_get_all(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_cache_content_get() IS 'Retrieve batch of distinct sha1_git with size batch_limit from last_content';
+COMMENT ON FUNCTION swh_cache_content_get_all() IS 'Retrieve batch of contents';
 
 
 --
@@ -1070,6 +1104,54 @@ begin
     return r;
 end
 $$;
+
+
+--
+-- Name: swh_mimetype_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mimetype_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    insert into content_mimetype (id, mimetype, encoding)
+	select id, mimetype, encoding
+	from tmp_content_mimetype
+        on conflict do nothing;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_mimetype_add(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mimetype_add() IS 'Add new content mimetype';
+
+
+--
+-- Name: swh_mimetype_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mimetype_missing() RETURNS SETOF sha1
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+	(select id::sha1 from tmp_bytea as tmp
+	 where not exists
+	     (select 1 from content_mimetype as c where c.id = tmp.id));
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mimetype_missing() IS 'Filter missing content mimetype';
 
 
 --
@@ -2008,6 +2090,62 @@ CREATE TABLE cache_revision_origin (
 
 
 --
+-- Name: content_language; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_language (
+    id sha1 NOT NULL,
+    language bytea NOT NULL
+);
+
+
+--
+-- Name: TABLE content_language; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE content_language IS 'Language information on a raw content';
+
+
+--
+-- Name: COLUMN content_language.language; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_language.language IS 'Language information';
+
+
+--
+-- Name: content_mimetype; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_mimetype (
+    id sha1 NOT NULL,
+    mimetype bytea NOT NULL,
+    encoding bytea NOT NULL
+);
+
+
+--
+-- Name: TABLE content_mimetype; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE content_mimetype IS 'Metadata associated to a raw content';
+
+
+--
+-- Name: COLUMN content_mimetype.mimetype; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_mimetype.mimetype IS 'Raw content Mimetype';
+
+
+--
+-- Name: COLUMN content_mimetype.encoding; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_mimetype.encoding IS 'Raw content encoding';
+
+
+--
 -- Name: content_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -2623,6 +2761,22 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status, object_id) FROM std
 
 
 --
+-- Data for Name: content_language; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY content_language (id, language) FROM stdin;
+\.
+
+
+--
+-- Data for Name: content_mimetype; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY content_mimetype (id, mimetype, encoding) FROM stdin;
+\.
+
+
+--
 -- Name: content_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
@@ -2634,7 +2788,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-85	2016-09-23 14:04:31.626513+02	Work In Progress
+87	2016-10-07 16:49:04.798941+02	Work In Progress
 \.
 
 
@@ -2703,17 +2857,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-09-23 14:04:31.626513+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-09-23 14:04:31.626513+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-10-07 16:49:04.798941+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	11
 \.
 
 
@@ -2730,17 +2884,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-09-23 14:04:31.626513+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
 \.
 
 
@@ -2926,6 +3080,22 @@ ALTER TABLE ONLY cache_content_revision_processed
 
 ALTER TABLE ONLY cache_revision_origin
     ADD CONSTRAINT cache_revision_origin_pkey PRIMARY KEY (revision, origin, visit);
+
+
+--
+-- Name: content_language_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_language
+    ADD CONSTRAINT content_language_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: content_mimetype_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_mimetype
+    ADD CONSTRAINT content_mimetype_pkey PRIMARY KEY (id);
 
 
 --
@@ -3420,6 +3590,22 @@ ALTER TABLE ONLY cache_revision_origin
 
 ALTER TABLE ONLY cache_revision_origin
     ADD CONSTRAINT cache_revision_origin_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
+
+
+--
+-- Name: content_language_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_language
+    ADD CONSTRAINT content_language_id_fkey FOREIGN KEY (id) REFERENCES content(sha1);
+
+
+--
+-- Name: content_mimetype_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_mimetype
+    ADD CONSTRAINT content_mimetype_id_fkey FOREIGN KEY (id) REFERENCES content(sha1);
 
 
 --
