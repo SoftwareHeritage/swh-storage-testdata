@@ -226,6 +226,413 @@ CREATE TYPE entity_id AS (
 
 
 --
+-- Name: languages; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE languages AS ENUM (
+    'abap',
+    'abnf',
+    'actionscript',
+    'actionscript-3',
+    'ada',
+    'adl',
+    'agda',
+    'alloy',
+    'ambienttalk',
+    'antlr',
+    'antlr-with-actionscript-target',
+    'antlr-with-c#-target',
+    'antlr-with-cpp-target',
+    'antlr-with-java-target',
+    'antlr-with-objectivec-target',
+    'antlr-with-perl-target',
+    'antlr-with-python-target',
+    'antlr-with-ruby-target',
+    'apacheconf',
+    'apl',
+    'applescript',
+    'arduino',
+    'aspectj',
+    'aspx-cs',
+    'aspx-vb',
+    'asymptote',
+    'autohotkey',
+    'autoit',
+    'awk',
+    'base-makefile',
+    'bash',
+    'bash-session',
+    'batchfile',
+    'bbcode',
+    'bc',
+    'befunge',
+    'blitzbasic',
+    'blitzmax',
+    'bnf',
+    'boo',
+    'boogie',
+    'brainfuck',
+    'bro',
+    'bugs',
+    'c',
+    'c#',
+    'c++',
+    'c-objdump',
+    'ca65-assembler',
+    'cadl',
+    'camkes',
+    'cbm-basic-v2',
+    'ceylon',
+    'cfengine3',
+    'cfstatement',
+    'chaiscript',
+    'chapel',
+    'cheetah',
+    'cirru',
+    'clay',
+    'clojure',
+    'clojurescript',
+    'cmake',
+    'cobol',
+    'cobolfree',
+    'coffeescript',
+    'coldfusion-cfc',
+    'coldfusion-html',
+    'common-lisp',
+    'component-pascal',
+    'coq',
+    'cpp-objdump',
+    'cpsa',
+    'crmsh',
+    'croc',
+    'cryptol',
+    'csound-document',
+    'csound-orchestra',
+    'csound-score',
+    'css',
+    'css+django/jinja',
+    'css+genshi-text',
+    'css+lasso',
+    'css+mako',
+    'css+mozpreproc',
+    'css+myghty',
+    'css+php',
+    'css+ruby',
+    'css+smarty',
+    'cuda',
+    'cypher',
+    'cython',
+    'd',
+    'd-objdump',
+    'darcs-patch',
+    'dart',
+    'debian-control-file',
+    'debian-sourcelist',
+    'delphi',
+    'dg',
+    'diff',
+    'django/jinja',
+    'docker',
+    'dtd',
+    'duel',
+    'dylan',
+    'dylan-session',
+    'dylanlid',
+    'earl-grey',
+    'easytrieve',
+    'ebnf',
+    'ec',
+    'ecl',
+    'eiffel',
+    'elixir',
+    'elixir-iex-session',
+    'elm',
+    'emacslisp',
+    'embedded-ragel',
+    'erb',
+    'erlang',
+    'erlang-erl-session',
+    'evoque',
+    'ezhil',
+    'factor',
+    'fancy',
+    'fantom',
+    'felix',
+    'fish',
+    'fortran',
+    'fortranfixed',
+    'foxpro',
+    'fsharp',
+    'gap',
+    'gas',
+    'genshi',
+    'genshi-text',
+    'gettext-catalog',
+    'gherkin',
+    'glsl',
+    'gnuplot',
+    'go',
+    'golo',
+    'gooddata-cl',
+    'gosu',
+    'gosu-template',
+    'groff',
+    'groovy',
+    'haml',
+    'handlebars',
+    'haskell',
+    'haxe',
+    'hexdump',
+    'html',
+    'html+cheetah',
+    'html+django/jinja',
+    'html+evoque',
+    'html+genshi',
+    'html+handlebars',
+    'html+lasso',
+    'html+mako',
+    'html+myghty',
+    'html+php',
+    'html+smarty',
+    'html+twig',
+    'html+velocity',
+    'http',
+    'hxml',
+    'hy',
+    'hybris',
+    'idl',
+    'idris',
+    'igor',
+    'inform-6',
+    'inform-6-template',
+    'inform-7',
+    'ini',
+    'io',
+    'ioke',
+    'irc-logs',
+    'isabelle',
+    'j',
+    'jade',
+    'jags',
+    'jasmin',
+    'java',
+    'java-server-page',
+    'javascript',
+    'javascript+cheetah',
+    'javascript+django/jinja',
+    'javascript+genshi-text',
+    'javascript+lasso',
+    'javascript+mako',
+    'javascript+mozpreproc',
+    'javascript+myghty',
+    'javascript+php',
+    'javascript+ruby',
+    'javascript+smarty',
+    'jcl',
+    'json',
+    'json-ld',
+    'julia',
+    'julia-console',
+    'kal',
+    'kconfig',
+    'koka',
+    'kotlin',
+    'lasso',
+    'lean',
+    'lesscss',
+    'lighttpd-configuration-file',
+    'limbo',
+    'liquid',
+    'literate-agda',
+    'literate-cryptol',
+    'literate-haskell',
+    'literate-idris',
+    'livescript',
+    'llvm',
+    'logos',
+    'logtalk',
+    'lsl',
+    'lua',
+    'makefile',
+    'mako',
+    'maql',
+    'mask',
+    'mason',
+    'mathematica',
+    'matlab',
+    'matlab-session',
+    'minid',
+    'modelica',
+    'modula-2',
+    'moinmoin/trac-wiki-markup',
+    'monkey',
+    'moocode',
+    'moonscript',
+    'mozhashpreproc',
+    'mozpercentpreproc',
+    'mql',
+    'mscgen',
+    'msdos-session',
+    'mupad',
+    'mxml',
+    'myghty',
+    'mysql',
+    'nasm',
+    'nemerle',
+    'nesc',
+    'newlisp',
+    'newspeak',
+    'nginx-configuration-file',
+    'nimrod',
+    'nit',
+    'nix',
+    'nsis',
+    'numpy',
+    'objdump',
+    'objdump-nasm',
+    'objective-c',
+    'objective-c++',
+    'objective-j',
+    'ocaml',
+    'octave',
+    'odin',
+    'ooc',
+    'opa',
+    'openedge-abl',
+    'pacmanconf',
+    'pan',
+    'parasail',
+    'pawn',
+    'perl',
+    'perl6',
+    'php',
+    'pig',
+    'pike',
+    'pkgconfig',
+    'pl/pgsql',
+    'postgresql-console-(psql)',
+    'postgresql-sql-dialect',
+    'postscript',
+    'povray',
+    'powershell',
+    'powershell-session',
+    'praat',
+    'prolog',
+    'properties',
+    'protocol-buffer',
+    'puppet',
+    'pypy-log',
+    'python',
+    'python-3',
+    'python-3.0-traceback',
+    'python-console-session',
+    'python-traceback',
+    'qbasic',
+    'qml',
+    'qvto',
+    'racket',
+    'ragel',
+    'ragel-in-c-host',
+    'ragel-in-cpp-host',
+    'ragel-in-d-host',
+    'ragel-in-java-host',
+    'ragel-in-objective-c-host',
+    'ragel-in-ruby-host',
+    'raw-token-data',
+    'rconsole',
+    'rd',
+    'rebol',
+    'red',
+    'redcode',
+    'reg',
+    'resourcebundle',
+    'restructuredtext',
+    'rexx',
+    'rhtml',
+    'roboconf-graph',
+    'roboconf-instances',
+    'robotframework',
+    'rpmspec',
+    'rql',
+    'rsl',
+    'ruby',
+    'ruby-irb-session',
+    'rust',
+    's',
+    'sass',
+    'scala',
+    'scalate-server-page',
+    'scaml',
+    'scheme',
+    'scilab',
+    'scss',
+    'shen',
+    'slim',
+    'smali',
+    'smalltalk',
+    'smarty',
+    'snobol',
+    'sourcepawn',
+    'sparql',
+    'sql',
+    'sqlite3con',
+    'squidconf',
+    'stan',
+    'standard-ml',
+    'supercollider',
+    'swift',
+    'swig',
+    'systemverilog',
+    'tads-3',
+    'tap',
+    'tcl',
+    'tcsh',
+    'tcsh-session',
+    'tea',
+    'termcap',
+    'terminfo',
+    'terraform',
+    'tex',
+    'text-only',
+    'thrift',
+    'todotxt',
+    'trafficscript',
+    'treetop',
+    'turtle',
+    'twig',
+    'typescript',
+    'urbiscript',
+    'vala',
+    'vb.net',
+    'vctreestatus',
+    'velocity',
+    'verilog',
+    'vgl',
+    'vhdl',
+    'viml',
+    'x10',
+    'xml',
+    'xml+cheetah',
+    'xml+django/jinja',
+    'xml+evoque',
+    'xml+lasso',
+    'xml+mako',
+    'xml+myghty',
+    'xml+php',
+    'xml+ruby',
+    'xml+smarty',
+    'xml+velocity',
+    'xquery',
+    'xslt',
+    'xtend',
+    'xul+mozpreproc',
+    'yaml',
+    'yaml+jinja',
+    'zephir'
+);
+
+
+--
 -- Name: object_type; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -1104,6 +1511,54 @@ begin
     return r;
 end
 $$;
+
+
+--
+-- Name: swh_language_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_language_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    insert into content_language (id, lang)
+	select id, lang
+	from tmp_content_language
+        on conflict do nothing;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_language_add(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_language_add() IS 'Add new content language';
+
+
+--
+-- Name: swh_language_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_language_missing() RETURNS SETOF sha1
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+	(select id::sha1 from tmp_bytea as tmp
+	 where not exists
+	     (select 1 from content_language as c where c.id = tmp.id));
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_language_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_language_missing() IS 'Filter missing content language';
 
 
 --
@@ -2095,7 +2550,7 @@ CREATE TABLE cache_revision_origin (
 
 CREATE TABLE content_language (
     id sha1 NOT NULL,
-    language bytea NOT NULL
+    lang languages NOT NULL
 );
 
 
@@ -2107,10 +2562,10 @@ COMMENT ON TABLE content_language IS 'Language information on a raw content';
 
 
 --
--- Name: COLUMN content_language.language; Type: COMMENT; Schema: public; Owner: -
+-- Name: COLUMN content_language.lang; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_language.language IS 'Language information';
+COMMENT ON COLUMN content_language.lang IS 'Language information';
 
 
 --
@@ -2764,7 +3219,7 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status, object_id) FROM std
 -- Data for Name: content_language; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_language (id, language) FROM stdin;
+COPY content_language (id, lang) FROM stdin;
 \.
 
 
@@ -2788,7 +3243,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-87	2016-10-07 16:49:04.798941+02	Work In Progress
+87	2016-10-07 19:05:31.297279+02	Work In Progress
 \.
 
 
@@ -2857,17 +3312,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-10-07 16:49:04.798941+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-10-07 16:49:04.798941+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-10-07 19:05:31.297279+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	11
 \.
 
 
@@ -2884,17 +3339,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-10-07 16:49:04.798941+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
 \.
 
 
