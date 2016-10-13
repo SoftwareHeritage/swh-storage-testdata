@@ -2,11 +2,12 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.5.4
--- Dumped by pg_dump version 9.5.4
+-- Dumped from database version 9.6.0
+-- Dumped by pg_dump version 9.6.0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
@@ -628,7 +629,8 @@ CREATE TYPE languages AS ENUM (
     'xul+mozpreproc',
     'yaml',
     'yaml+jinja',
-    'zephir'
+    'zephir',
+    'unknown'
 );
 
 
@@ -1149,6 +1151,111 @@ COMMENT ON FUNCTION swh_content_find_provenance(content_id sha1_git) IS 'Given a
 
 
 --
+-- Name: swh_content_language_add(boolean); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_language_add(conflict_update boolean) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    if conflict_update then
+        insert into content_language (id, lang)
+        select id, lang
+    	from tmp_content_language
+            on conflict(id)
+                do update set lang = excluded.lang;
+
+    else
+        insert into content_language (id, lang)
+        select id, lang
+    	from tmp_content_language
+            on conflict do nothing;
+    end if;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_language_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_language_add(conflict_update boolean) IS 'Add new content languages';
+
+
+--
+-- Name: content_language; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_language (
+    id sha1 NOT NULL,
+    lang languages NOT NULL
+);
+
+
+--
+-- Name: TABLE content_language; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE content_language IS 'Language information on a raw content';
+
+
+--
+-- Name: COLUMN content_language.lang; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_language.lang IS 'Language information';
+
+
+--
+-- Name: swh_content_language_get(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_language_get() RETURNS SETOF content_language
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select id::sha1, lang
+        from tmp_bytea t
+        inner join content_language using(id);
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_language_get(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_language_get() IS 'List content languages';
+
+
+--
+-- Name: swh_content_language_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_language_missing() RETURNS SETOF sha1
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+	(select id::sha1 from tmp_bytea as tmp
+	 where not exists
+	     (select 1 from content_language as c where c.id = tmp.id));
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_language_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_language_missing() IS 'Filter missing content languages';
+
+
+--
 -- Name: swh_content_list_by_object_id(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1159,6 +1266,120 @@ CREATE FUNCTION swh_content_list_by_object_id(min_excl bigint, max_incl bigint) 
     where object_id > min_excl and object_id <= max_incl
     order by object_id;
 $$;
+
+
+--
+-- Name: swh_content_mimetype_add(boolean); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_mimetype_add(conflict_update boolean) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    if conflict_update then
+        insert into content_mimetype (id, mimetype, encoding)
+        select id, mimetype, encoding
+        from tmp_content_mimetype
+            on conflict(id)
+                do update set mimetype = excluded.mimetype,
+                    encoding = excluded.encoding;
+
+    else
+        insert into content_mimetype (id, mimetype, encoding)
+        select id, mimetype, encoding
+         from tmp_content_mimetype
+            on conflict do nothing;
+    end if;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_mimetype_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_mimetype_add(conflict_update boolean) IS 'Add new content mimetypes';
+
+
+--
+-- Name: content_mimetype; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_mimetype (
+    id sha1 NOT NULL,
+    mimetype bytea NOT NULL,
+    encoding bytea NOT NULL
+);
+
+
+--
+-- Name: TABLE content_mimetype; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE content_mimetype IS 'Metadata associated to a raw content';
+
+
+--
+-- Name: COLUMN content_mimetype.mimetype; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_mimetype.mimetype IS 'Raw content Mimetype';
+
+
+--
+-- Name: COLUMN content_mimetype.encoding; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_mimetype.encoding IS 'Raw content encoding';
+
+
+--
+-- Name: swh_content_mimetype_get(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_mimetype_get() RETURNS SETOF content_mimetype
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select id::sha1, mimetype, encoding
+        from tmp_bytea t
+        inner join content_mimetype using(id);
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_mimetype_get(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_mimetype_get() IS 'List content mimetypes';
+
+
+--
+-- Name: swh_content_mimetype_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_mimetype_missing() RETURNS SETOF sha1
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+	(select id::sha1 from tmp_bytea as tmp
+	 where not exists
+	     (select 1 from content_mimetype as c where c.id = tmp.id));
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_mimetype_missing() IS 'Filter missing content mimetype';
 
 
 --
@@ -1511,102 +1732,6 @@ begin
     return r;
 end
 $$;
-
-
---
--- Name: swh_language_add(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_language_add() RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-begin
-    insert into content_language (id, lang)
-	select id, lang
-	from tmp_content_language
-        on conflict do nothing;
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_language_add(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_language_add() IS 'Add new content language';
-
-
---
--- Name: swh_language_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_language_missing() RETURNS SETOF sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	(select id::sha1 from tmp_bytea as tmp
-	 where not exists
-	     (select 1 from content_language as c where c.id = tmp.id));
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_language_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_language_missing() IS 'Filter missing content language';
-
-
---
--- Name: swh_mimetype_add(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_mimetype_add() RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-begin
-    insert into content_mimetype (id, mimetype, encoding)
-	select id, mimetype, encoding
-	from tmp_content_mimetype
-        on conflict do nothing;
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_mimetype_add(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_mimetype_add() IS 'Add new content mimetype';
-
-
---
--- Name: swh_mimetype_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_mimetype_missing() RETURNS SETOF sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	(select id::sha1 from tmp_bytea as tmp
-	 where not exists
-	     (select 1 from content_mimetype as c where c.id = tmp.id));
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_mimetype_missing() IS 'Filter missing content mimetype';
 
 
 --
@@ -2545,62 +2670,6 @@ CREATE TABLE cache_revision_origin (
 
 
 --
--- Name: content_language; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE content_language (
-    id sha1 NOT NULL,
-    lang languages NOT NULL
-);
-
-
---
--- Name: TABLE content_language; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE content_language IS 'Language information on a raw content';
-
-
---
--- Name: COLUMN content_language.lang; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_language.lang IS 'Language information';
-
-
---
--- Name: content_mimetype; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE content_mimetype (
-    id sha1 NOT NULL,
-    mimetype bytea NOT NULL,
-    encoding bytea NOT NULL
-);
-
-
---
--- Name: TABLE content_mimetype; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE content_mimetype IS 'Metadata associated to a raw content';
-
-
---
--- Name: COLUMN content_mimetype.mimetype; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_mimetype.mimetype IS 'Raw content Mimetype';
-
-
---
--- Name: COLUMN content_mimetype.encoding; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_mimetype.encoding IS 'Raw content encoding';
-
-
---
 -- Name: content_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -3086,98 +3155,98 @@ ALTER SEQUENCE skipped_content_object_id_seq OWNED BY skipped_content.object_id;
 
 
 --
--- Name: object_id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: content object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content ALTER COLUMN object_id SET DEFAULT nextval('content_object_id_seq'::regclass);
 
 
 --
--- Name: object_id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: directory object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory ALTER COLUMN object_id SET DEFAULT nextval('directory_object_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: directory_entry_dir id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory_entry_dir ALTER COLUMN id SET DEFAULT nextval('directory_entry_dir_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: directory_entry_file id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory_entry_file ALTER COLUMN id SET DEFAULT nextval('directory_entry_file_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: directory_entry_rev id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory_entry_rev ALTER COLUMN id SET DEFAULT nextval('directory_entry_rev_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: entity_history id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY entity_history ALTER COLUMN id SET DEFAULT nextval('entity_history_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: fetch_history id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY fetch_history ALTER COLUMN id SET DEFAULT nextval('fetch_history_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: list_history id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY list_history ALTER COLUMN id SET DEFAULT nextval('list_history_id_seq'::regclass);
 
 
 --
--- Name: object_id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: occurrence_history object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY occurrence_history ALTER COLUMN object_id SET DEFAULT nextval('occurrence_history_object_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: origin id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY origin ALTER COLUMN id SET DEFAULT nextval('origin_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: person id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY person ALTER COLUMN id SET DEFAULT nextval('person_id_seq'::regclass);
 
 
 --
--- Name: object_id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: release object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY release ALTER COLUMN object_id SET DEFAULT nextval('release_object_id_seq'::regclass);
 
 
 --
--- Name: object_id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: revision object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY revision ALTER COLUMN object_id SET DEFAULT nextval('revision_object_id_seq'::regclass);
 
 
 --
--- Name: object_id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: skipped_content object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY skipped_content ALTER COLUMN object_id SET DEFAULT nextval('skipped_content_object_id_seq'::regclass);
@@ -3243,7 +3312,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-87	2016-10-07 19:05:31.297279+02	Work In Progress
+88	2016-10-13 14:02:33.165394+02	Work In Progress
 \.
 
 
@@ -3312,17 +3381,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-10-07 19:05:31.297279+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-10-07 19:05:31.297279+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-10-13 14:02:33.165394+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	11
 \.
 
 
@@ -3339,17 +3408,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-10-07 19:05:31.297279+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
 \.
 
 
@@ -3514,7 +3583,7 @@ SELECT pg_catalog.setval('skipped_content_object_id_seq', 1, false);
 
 
 --
--- Name: cache_content_revision_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: cache_content_revision cache_content_revision_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY cache_content_revision
@@ -3522,7 +3591,7 @@ ALTER TABLE ONLY cache_content_revision
 
 
 --
--- Name: cache_content_revision_processed_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: cache_content_revision_processed cache_content_revision_processed_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY cache_content_revision_processed
@@ -3530,7 +3599,7 @@ ALTER TABLE ONLY cache_content_revision_processed
 
 
 --
--- Name: cache_revision_origin_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: cache_revision_origin cache_revision_origin_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY cache_revision_origin
@@ -3538,7 +3607,7 @@ ALTER TABLE ONLY cache_revision_origin
 
 
 --
--- Name: content_language_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: content_language content_language_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_language
@@ -3546,7 +3615,7 @@ ALTER TABLE ONLY content_language
 
 
 --
--- Name: content_mimetype_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: content_mimetype content_mimetype_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_mimetype
@@ -3554,7 +3623,7 @@ ALTER TABLE ONLY content_mimetype
 
 
 --
--- Name: content_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: content content_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content
@@ -3562,7 +3631,7 @@ ALTER TABLE ONLY content
 
 
 --
--- Name: dbversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: dbversion dbversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY dbversion
@@ -3570,7 +3639,7 @@ ALTER TABLE ONLY dbversion
 
 
 --
--- Name: directory_entry_dir_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: directory_entry_dir directory_entry_dir_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory_entry_dir
@@ -3578,7 +3647,7 @@ ALTER TABLE ONLY directory_entry_dir
 
 
 --
--- Name: directory_entry_file_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: directory_entry_file directory_entry_file_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory_entry_file
@@ -3586,7 +3655,7 @@ ALTER TABLE ONLY directory_entry_file
 
 
 --
--- Name: directory_entry_rev_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: directory_entry_rev directory_entry_rev_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory_entry_rev
@@ -3594,7 +3663,7 @@ ALTER TABLE ONLY directory_entry_rev
 
 
 --
--- Name: directory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: directory directory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY directory
@@ -3602,7 +3671,7 @@ ALTER TABLE ONLY directory
 
 
 --
--- Name: entity_equivalence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: entity_equivalence entity_equivalence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY entity_equivalence
@@ -3610,7 +3679,7 @@ ALTER TABLE ONLY entity_equivalence
 
 
 --
--- Name: entity_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: entity_history entity_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY entity_history
@@ -3618,7 +3687,7 @@ ALTER TABLE ONLY entity_history
 
 
 --
--- Name: entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY entity
@@ -3626,7 +3695,7 @@ ALTER TABLE ONLY entity
 
 
 --
--- Name: fetch_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: fetch_history fetch_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY fetch_history
@@ -3634,7 +3703,7 @@ ALTER TABLE ONLY fetch_history
 
 
 --
--- Name: list_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: list_history list_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY list_history
@@ -3642,7 +3711,7 @@ ALTER TABLE ONLY list_history
 
 
 --
--- Name: listable_entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: listable_entity listable_entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY listable_entity
@@ -3650,7 +3719,7 @@ ALTER TABLE ONLY listable_entity
 
 
 --
--- Name: occurrence_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: occurrence_history occurrence_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY occurrence_history
@@ -3658,7 +3727,7 @@ ALTER TABLE ONLY occurrence_history
 
 
 --
--- Name: occurrence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: occurrence occurrence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY occurrence
@@ -3666,7 +3735,7 @@ ALTER TABLE ONLY occurrence
 
 
 --
--- Name: origin_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: origin origin_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY origin
@@ -3674,7 +3743,7 @@ ALTER TABLE ONLY origin
 
 
 --
--- Name: origin_visit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: origin_visit origin_visit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY origin_visit
@@ -3682,7 +3751,7 @@ ALTER TABLE ONLY origin_visit
 
 
 --
--- Name: person_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: person person_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY person
@@ -3690,7 +3759,7 @@ ALTER TABLE ONLY person
 
 
 --
--- Name: release_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: release release_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY release
@@ -3698,7 +3767,7 @@ ALTER TABLE ONLY release
 
 
 --
--- Name: revision_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: revision_history revision_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY revision_history
@@ -3706,7 +3775,7 @@ ALTER TABLE ONLY revision_history
 
 
 --
--- Name: revision_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: revision revision_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY revision
@@ -3714,7 +3783,7 @@ ALTER TABLE ONLY revision
 
 
 --
--- Name: skipped_content_sha1_sha1_git_sha256_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: skipped_content skipped_content_sha1_sha1_git_sha256_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY skipped_content
@@ -3960,63 +4029,63 @@ CREATE UNIQUE INDEX skipped_content_sha256_idx ON skipped_content USING btree (s
 
 
 --
--- Name: notify_new_content; Type: TRIGGER; Schema: public; Owner: -
+-- Name: content notify_new_content; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER notify_new_content AFTER INSERT ON content FOR EACH ROW EXECUTE PROCEDURE notify_new_content();
 
 
 --
--- Name: notify_new_directory; Type: TRIGGER; Schema: public; Owner: -
+-- Name: directory notify_new_directory; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER notify_new_directory AFTER INSERT ON directory FOR EACH ROW EXECUTE PROCEDURE notify_new_directory();
 
 
 --
--- Name: notify_new_origin; Type: TRIGGER; Schema: public; Owner: -
+-- Name: origin notify_new_origin; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER notify_new_origin AFTER INSERT ON origin FOR EACH ROW EXECUTE PROCEDURE notify_new_origin();
 
 
 --
--- Name: notify_new_origin_visit; Type: TRIGGER; Schema: public; Owner: -
+-- Name: origin_visit notify_new_origin_visit; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER notify_new_origin_visit AFTER INSERT ON origin_visit FOR EACH ROW EXECUTE PROCEDURE notify_new_origin_visit();
 
 
 --
--- Name: notify_new_release; Type: TRIGGER; Schema: public; Owner: -
+-- Name: release notify_new_release; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER notify_new_release AFTER INSERT ON release FOR EACH ROW EXECUTE PROCEDURE notify_new_release();
 
 
 --
--- Name: notify_new_revision; Type: TRIGGER; Schema: public; Owner: -
+-- Name: revision notify_new_revision; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER notify_new_revision AFTER INSERT ON revision FOR EACH ROW EXECUTE PROCEDURE notify_new_revision();
 
 
 --
--- Name: notify_new_skipped_content; Type: TRIGGER; Schema: public; Owner: -
+-- Name: skipped_content notify_new_skipped_content; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER notify_new_skipped_content AFTER INSERT ON skipped_content FOR EACH ROW EXECUTE PROCEDURE notify_new_skipped_content();
 
 
 --
--- Name: update_entity; Type: TRIGGER; Schema: public; Owner: -
+-- Name: entity_history update_entity; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_entity AFTER INSERT OR UPDATE ON entity_history FOR EACH ROW EXECUTE PROCEDURE swh_update_entity_from_entity_history();
 
 
 --
--- Name: cache_content_revision_content_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: cache_content_revision cache_content_revision_content_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY cache_content_revision
@@ -4024,7 +4093,7 @@ ALTER TABLE ONLY cache_content_revision
 
 
 --
--- Name: cache_content_revision_processed_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: cache_content_revision_processed cache_content_revision_processed_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY cache_content_revision_processed
@@ -4032,7 +4101,7 @@ ALTER TABLE ONLY cache_content_revision_processed
 
 
 --
--- Name: cache_revision_origin_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: cache_revision_origin cache_revision_origin_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY cache_revision_origin
@@ -4040,7 +4109,7 @@ ALTER TABLE ONLY cache_revision_origin
 
 
 --
--- Name: cache_revision_origin_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: cache_revision_origin cache_revision_origin_revision_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY cache_revision_origin
@@ -4048,7 +4117,7 @@ ALTER TABLE ONLY cache_revision_origin
 
 
 --
--- Name: content_language_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: content_language content_language_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_language
@@ -4056,7 +4125,7 @@ ALTER TABLE ONLY content_language
 
 
 --
--- Name: content_mimetype_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: content_mimetype content_mimetype_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_mimetype
@@ -4064,7 +4133,7 @@ ALTER TABLE ONLY content_mimetype
 
 
 --
--- Name: entity_equivalence_entity1_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: entity_equivalence entity_equivalence_entity1_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY entity_equivalence
@@ -4072,7 +4141,7 @@ ALTER TABLE ONLY entity_equivalence
 
 
 --
--- Name: entity_equivalence_entity2_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: entity_equivalence entity_equivalence_entity2_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY entity_equivalence
@@ -4080,7 +4149,7 @@ ALTER TABLE ONLY entity_equivalence
 
 
 --
--- Name: entity_last_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_last_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY entity
@@ -4088,7 +4157,7 @@ ALTER TABLE ONLY entity
 
 
 --
--- Name: entity_parent_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_parent_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY entity
@@ -4096,7 +4165,7 @@ ALTER TABLE ONLY entity
 
 
 --
--- Name: fetch_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: fetch_history fetch_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY fetch_history
@@ -4104,7 +4173,7 @@ ALTER TABLE ONLY fetch_history
 
 
 --
--- Name: list_history_entity_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: list_history list_history_entity_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY list_history
@@ -4112,7 +4181,7 @@ ALTER TABLE ONLY list_history
 
 
 --
--- Name: listable_entity_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: listable_entity listable_entity_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY listable_entity
@@ -4120,7 +4189,7 @@ ALTER TABLE ONLY listable_entity
 
 
 --
--- Name: occurrence_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: occurrence_history occurrence_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY occurrence_history
@@ -4128,7 +4197,7 @@ ALTER TABLE ONLY occurrence_history
 
 
 --
--- Name: occurrence_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: occurrence occurrence_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY occurrence
@@ -4136,7 +4205,7 @@ ALTER TABLE ONLY occurrence
 
 
 --
--- Name: origin_lister_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: origin origin_lister_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY origin
@@ -4144,7 +4213,7 @@ ALTER TABLE ONLY origin
 
 
 --
--- Name: origin_project_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: origin origin_project_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY origin
@@ -4152,7 +4221,7 @@ ALTER TABLE ONLY origin
 
 
 --
--- Name: origin_visit_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: origin_visit origin_visit_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY origin_visit
@@ -4160,7 +4229,7 @@ ALTER TABLE ONLY origin_visit
 
 
 --
--- Name: release_author_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: release release_author_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY release
@@ -4168,7 +4237,7 @@ ALTER TABLE ONLY release
 
 
 --
--- Name: revision_author_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: revision revision_author_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY revision
@@ -4176,7 +4245,7 @@ ALTER TABLE ONLY revision
 
 
 --
--- Name: revision_committer_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: revision revision_committer_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY revision
@@ -4184,7 +4253,7 @@ ALTER TABLE ONLY revision
 
 
 --
--- Name: revision_history_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: revision_history revision_history_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY revision_history
@@ -4192,21 +4261,11 @@ ALTER TABLE ONLY revision_history
 
 
 --
--- Name: skipped_content_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: skipped_content skipped_content_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY skipped_content
     ADD CONSTRAINT skipped_content_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
-
-
---
--- Name: public; Type: ACL; Schema: -; Owner: -
---
-
-REVOKE ALL ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON SCHEMA public FROM postgres;
-GRANT ALL ON SCHEMA public TO postgres;
-GRANT ALL ON SCHEMA public TO PUBLIC;
 
 
 --
