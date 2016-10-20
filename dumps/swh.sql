@@ -157,6 +157,100 @@ CREATE TYPE counter AS (
 
 
 --
+-- Name: ctags_languages; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE ctags_languages AS ENUM (
+    'Ada',
+    'AnsiblePlaybook',
+    'Ant',
+    'Asm',
+    'Asp',
+    'Autoconf',
+    'Automake',
+    'Awk',
+    'Basic',
+    'BETA',
+    'C',
+    'C#',
+    'C++',
+    'Clojure',
+    'Cobol',
+    'CoffeeScript [disabled]',
+    'CSS',
+    'ctags',
+    'D',
+    'DBusIntrospect',
+    'Diff',
+    'DosBatch',
+    'DTS',
+    'Eiffel',
+    'Erlang',
+    'Falcon',
+    'Flex',
+    'Fortran',
+    'gdbinit [disabled]',
+    'Glade',
+    'Go',
+    'HTML',
+    'Iniconf',
+    'Java',
+    'JavaProperties',
+    'JavaScript',
+    'JSON',
+    'Lisp',
+    'Lua',
+    'M4',
+    'Make',
+    'man [disabled]',
+    'MatLab',
+    'Maven2',
+    'Myrddin',
+    'ObjectiveC',
+    'OCaml',
+    'OldC [disabled]',
+    'OldC++ [disabled]',
+    'Pascal',
+    'Perl',
+    'Perl6',
+    'PHP',
+    'PlistXML',
+    'pod',
+    'Protobuf',
+    'Python',
+    'PythonLoggingConfig',
+    'R',
+    'RelaxNG',
+    'reStructuredText',
+    'REXX',
+    'RpmSpec',
+    'Ruby',
+    'Rust',
+    'Scheme',
+    'Sh',
+    'SLang',
+    'SML',
+    'SQL',
+    'SVG',
+    'SystemdUnit',
+    'SystemVerilog',
+    'Tcl',
+    'Tex',
+    'TTCN',
+    'Vera',
+    'Verilog',
+    'VHDL',
+    'Vim',
+    'WindRes',
+    'XSLT',
+    'YACC',
+    'Yaml',
+    'YumRepo',
+    'Zephir'
+);
+
+
+--
 -- Name: directory_entry_type; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -1037,9 +1131,138 @@ end
 $$;
 
 
+--
+-- Name: swh_content_ctags_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_ctags_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    insert into content_ctags (id, name, kind, line, lang)
+    select id, name, kind, line, lang
+    from tmp_content_ctags
+        on conflict(id, md5(name), kind, line, lang)
+        do nothing;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_ctags_add(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_ctags_add() IS 'Add new ctags symbols per content';
+
+
 SET default_tablespace = '';
 
 SET default_with_oids = false;
+
+--
+-- Name: content_ctags; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_ctags (
+    id sha1 NOT NULL,
+    name text NOT NULL,
+    kind text NOT NULL,
+    line bigint NOT NULL,
+    lang ctags_languages NOT NULL
+);
+
+
+--
+-- Name: TABLE content_ctags; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE content_ctags IS 'Ctags information on a raw content';
+
+
+--
+-- Name: COLUMN content_ctags.id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_ctags.id IS 'Content identifier';
+
+
+--
+-- Name: COLUMN content_ctags.name; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_ctags.name IS 'Symbol name';
+
+
+--
+-- Name: COLUMN content_ctags.kind; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_ctags.kind IS 'Symbol kind (function, class, variable, const...)';
+
+
+--
+-- Name: COLUMN content_ctags.line; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_ctags.line IS 'Symbol line';
+
+
+--
+-- Name: COLUMN content_ctags.lang; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_ctags.lang IS 'Language information for that content';
+
+
+--
+-- Name: swh_content_ctags_get(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_ctags_get() RETURNS SETOF content_ctags
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select id::sha1, name, kind, line, lang
+        from tmp_bytea t
+        inner join content_ctags using(id)
+        order by line;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_ctags_get(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_ctags_get() IS 'List content ctags';
+
+
+--
+-- Name: swh_content_ctags_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_ctags_missing() RETURNS SETOF sha1
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+	(select id::sha1 from tmp_bytea as tmp
+	 where not exists
+	     (select 1 from content_ctags as c where c.id = tmp.id limit 1));
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_ctags_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_ctags_missing() IS 'Filter missing content ctags';
+
 
 --
 -- Name: content; Type: TABLE; Schema: public; Owner: -
@@ -3285,6 +3508,14 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status, object_id) FROM std
 
 
 --
+-- Data for Name: content_ctags; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY content_ctags (id, name, kind, line, lang) FROM stdin;
+\.
+
+
+--
 -- Data for Name: content_language; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -3312,7 +3543,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-88	2016-10-13 14:02:33.165394+02	Work In Progress
+89	2016-10-20 15:48:22.041449+02	Work In Progress
 \.
 
 
@@ -3381,17 +3612,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-10-13 14:02:33.165394+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-10-13 14:02:33.165394+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-10-20 15:48:22.041449+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-10-20 15:48:22.041449+02	11
 \.
 
 
@@ -3408,17 +3639,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-10-13 14:02:33.165394+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-10-20 15:48:22.041449+02"}
 \.
 
 
@@ -3798,6 +4029,20 @@ CREATE INDEX cache_revision_origin_revision_idx ON cache_revision_origin USING b
 
 
 --
+-- Name: content_ctags_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX content_ctags_id_idx ON content_ctags USING btree (id);
+
+
+--
+-- Name: content_ctags_id_md5_kind_line_lang_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX content_ctags_id_md5_kind_line_lang_idx ON content_ctags USING btree (id, md5(name), kind, line, lang);
+
+
+--
 -- Name: content_ctime_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4114,6 +4359,14 @@ ALTER TABLE ONLY cache_revision_origin
 
 ALTER TABLE ONLY cache_revision_origin
     ADD CONSTRAINT cache_revision_origin_revision_fkey FOREIGN KEY (revision) REFERENCES revision(id);
+
+
+--
+-- Name: content_ctags content_ctags_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_ctags
+    ADD CONSTRAINT content_ctags_id_fkey FOREIGN KEY (id) REFERENCES content(sha1);
 
 
 --
