@@ -212,7 +212,9 @@ CREATE TYPE content_ctags_signature AS (
 	name text,
 	kind text,
 	line bigint,
-	lang ctags_languages
+	lang ctags_languages,
+	tool_name text,
+	tool_version text
 );
 
 
@@ -242,142 +244,6 @@ CREATE TYPE content_fossology_license_signature AS (
 	tool_name text,
 	tool_version text,
 	licenses text[]
-);
-
-
---
--- Name: content_provenance; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE content_provenance AS (
-	content sha1_git,
-	revision sha1_git,
-	origin bigint,
-	visit bigint,
-	path unix_path
-);
-
-
---
--- Name: TYPE content_provenance; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TYPE content_provenance IS 'Provenance information on content';
-
-
---
--- Name: content_signature; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE content_signature AS (
-	sha1 sha1,
-	sha1_git sha1_git,
-	sha256 sha256
-);
-
-
---
--- Name: content_status; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE content_status AS ENUM (
-    'absent',
-    'visible',
-    'hidden'
-);
-
-
---
--- Name: TYPE content_status; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TYPE content_status IS 'Content visibility';
-
-
---
--- Name: counter; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE counter AS (
-	label text,
-	value bigint
-);
-
-
---
--- Name: directory_entry_type; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE directory_entry_type AS ENUM (
-    'file',
-    'dir',
-    'rev'
-);
-
-
---
--- Name: file_perms; Type: DOMAIN; Schema: public; Owner: -
---
-
-CREATE DOMAIN file_perms AS integer;
-
-
---
--- Name: directory_entry; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE directory_entry AS (
-	dir_id sha1_git,
-	type directory_entry_type,
-	target sha1_git,
-	name unix_path,
-	perms file_perms,
-	status content_status,
-	sha1 sha1,
-	sha1_git sha1_git,
-	sha256 sha256
-);
-
-
---
--- Name: entity_type; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE entity_type AS ENUM (
-    'organization',
-    'group_of_entities',
-    'hosting',
-    'group_of_persons',
-    'person',
-    'project'
-);
-
-
---
--- Name: TYPE entity_type; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TYPE entity_type IS 'Entity types';
-
-
---
--- Name: entity_id; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE entity_id AS (
-	id bigint,
-	uuid uuid,
-	parent uuid,
-	name text,
-	type entity_type,
-	description text,
-	homepage text,
-	active boolean,
-	generated boolean,
-	lister_metadata jsonb,
-	metadata jsonb,
-	last_seen timestamp with time zone,
-	last_id bigint
 );
 
 
@@ -794,6 +660,167 @@ CREATE TYPE languages AS ENUM (
 --
 
 COMMENT ON TYPE languages IS 'Languages recognized by language indexer';
+
+
+--
+-- Name: content_language_signature; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE content_language_signature AS (
+	id sha1,
+	lang languages,
+	tool_name text,
+	tool_version text
+);
+
+
+--
+-- Name: content_mimetype_signature; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE content_mimetype_signature AS (
+	id sha1,
+	mimetype bytea,
+	encoding bytea,
+	tool_name text,
+	tool_version text
+);
+
+
+--
+-- Name: content_provenance; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE content_provenance AS (
+	content sha1_git,
+	revision sha1_git,
+	origin bigint,
+	visit bigint,
+	path unix_path
+);
+
+
+--
+-- Name: TYPE content_provenance; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TYPE content_provenance IS 'Provenance information on content';
+
+
+--
+-- Name: content_signature; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE content_signature AS (
+	sha1 sha1,
+	sha1_git sha1_git,
+	sha256 sha256
+);
+
+
+--
+-- Name: content_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE content_status AS ENUM (
+    'absent',
+    'visible',
+    'hidden'
+);
+
+
+--
+-- Name: TYPE content_status; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TYPE content_status IS 'Content visibility';
+
+
+--
+-- Name: counter; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE counter AS (
+	label text,
+	value bigint
+);
+
+
+--
+-- Name: directory_entry_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE directory_entry_type AS ENUM (
+    'file',
+    'dir',
+    'rev'
+);
+
+
+--
+-- Name: file_perms; Type: DOMAIN; Schema: public; Owner: -
+--
+
+CREATE DOMAIN file_perms AS integer;
+
+
+--
+-- Name: directory_entry; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE directory_entry AS (
+	dir_id sha1_git,
+	type directory_entry_type,
+	target sha1_git,
+	name unix_path,
+	perms file_perms,
+	status content_status,
+	sha1 sha1,
+	sha1_git sha1_git,
+	sha256 sha256
+);
+
+
+--
+-- Name: entity_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE entity_type AS ENUM (
+    'organization',
+    'group_of_entities',
+    'hosting',
+    'group_of_persons',
+    'person',
+    'project'
+);
+
+
+--
+-- Name: TYPE entity_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TYPE entity_type IS 'Entity types';
+
+
+--
+-- Name: entity_id; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE entity_id AS (
+	id bigint,
+	uuid uuid,
+	parent uuid,
+	name text,
+	type entity_type,
+	description text,
+	homepage text,
+	active boolean,
+	generated boolean,
+	lister_metadata jsonb,
+	metadata jsonb,
+	last_seen timestamp with time zone,
+	last_id bigint
+);
 
 
 --
@@ -1241,13 +1268,18 @@ CREATE FUNCTION swh_content_ctags_add(conflict_update boolean) RETURNS void
 begin
     if conflict_update then
         delete from content_ctags
-        where id in (select distinct id from tmp_content_ctags);
+        where id in (select tmp.id
+                     from tmp_content_ctags tmp
+                     inner join indexer_configuration i on (i.tool_name=tmp.tool_name and i.tool_version = tmp.tool_version));
     end if;
 
-    insert into content_ctags (id, name, kind, line, lang)
-    select id, name, kind, line, lang
-    from tmp_content_ctags
-        on conflict(id, md5(name), kind, line, lang)
+    insert into content_ctags (id, name, kind, line, lang, indexer_configuration_id)
+    select id, name, kind, line, lang,
+           (select id from indexer_configuration
+            where tool_name=tct.tool_name
+            and tool_version=tct.tool_version)
+    from tmp_content_ctags tct
+        on conflict(id, md5(name), kind, line, lang, indexer_configuration_id)
         do nothing;
     return;
 end
@@ -1270,9 +1302,10 @@ CREATE FUNCTION swh_content_ctags_get() RETURNS SETOF content_ctags_signature
     AS $$
 begin
     return query
-        select c.id, c.name, c.kind, c.line, c.lang
+        select c.id, c.name, c.kind, c.line, c.lang, i.tool_name, i.tool_version
         from tmp_bytea t
         inner join content_ctags c using(id)
+        inner join indexer_configuration i on i.id = c.indexer_configuration_id
         order by line;
     return;
 end
@@ -1295,9 +1328,12 @@ CREATE FUNCTION swh_content_ctags_missing() RETURNS SETOF sha1
     AS $$
 begin
     return query
-	(select id::sha1 from tmp_bytea as tmp
+	(select id::sha1 from tmp_content_ctags_missing as tmp
 	 where not exists
-	     (select 1 from content_ctags as c where c.id = tmp.id limit 1));
+	     (select 1 from content_ctags as c
+              inner join indexer_configuration i
+              on (tmp.tool_name = i.tool_name and tmp.tool_version = i.tool_version)
+              where c.id = tmp.id limit 1));
     return;
 end
 $$;
@@ -1317,10 +1353,11 @@ COMMENT ON FUNCTION swh_content_ctags_missing() IS 'Filter missing content ctags
 CREATE FUNCTION swh_content_ctags_search(expression text, l integer DEFAULT 10, last_sha1 sha1 DEFAULT '\x0000000000000000000000000000000000000000'::bytea) RETURNS SETOF content_ctags_signature
     LANGUAGE sql
     AS $$
-    select id, name, kind, line, lang
-    from content_ctags
+    select c.id, name, kind, line, lang, tool_name, tool_version
+    from content_ctags c
+    inner join indexer_configuration i on i.id = c.indexer_configuration_id
     where hash_sha1(name) = hash_sha1(expression)
-    and id > last_sha1
+    and c.id > last_sha1
     order by id
     limit l;
 $$;
@@ -1455,8 +1492,13 @@ CREATE FUNCTION swh_content_fossology_license_add(conflict_update boolean) RETUR
     AS $$
 begin
     if conflict_update then
+        -- delete from content_fossology_license c
+        --   using tmp_content_fossology_license tmp, indexer_configuration i
+        --   where c.id = tmp.id and i.tool_name = tmp.tool_name and i.tool_version = tmp.tool_version;
         delete from content_fossology_license
-        where id in (select distinct id from tmp_content_fossology_license);
+        where id in (select tmp.id
+                     from tmp_content_fossology_license tmp
+                     inner join indexer_configuration i on (i.tool_name=tmp.tool_name and i.tool_version = tmp.tool_version));
     end if;
 
     insert into content_fossology_license (id, license_id, indexer_configuration_id)
@@ -1520,9 +1562,11 @@ CREATE FUNCTION swh_content_fossology_license_missing() RETURNS SETOF sha1
     AS $$
 begin
     return query
-	(select id::sha1 from tmp_bytea as tmp
+	(select id::sha1 from tmp_content_fossology_license_missing as tmp
 	 where not exists
-	     (select 1 from content_fossology_license as c where c.id = tmp.id));
+	     (select 1 from content_fossology_license as c
+              inner join indexer_configuration i on i.id=c.indexer_configuration_id
+              where c.id = tmp.id));
     return;
 end
 $$;
@@ -1567,17 +1611,24 @@ CREATE FUNCTION swh_content_language_add(conflict_update boolean) RETURNS void
     AS $$
 begin
     if conflict_update then
-        insert into content_language (id, lang)
-        select id, lang
-    	from tmp_content_language
-            on conflict(id)
+        insert into content_language (id, lang, indexer_configuration_id)
+        select id, lang,
+               (select id from indexer_configuration
+               where tool_name=tcl.tool_name
+               and tool_version=tcl.tool_version)
+    	from tmp_content_language tcl
+            on conflict(id, indexer_configuration_id)
                 do update set lang = excluded.lang;
 
     else
-        insert into content_language (id, lang)
-        select id, lang
-    	from tmp_content_language
-            on conflict do nothing;
+        insert into content_language (id, lang, indexer_configuration_id)
+        select id, lang,
+               (select id from indexer_configuration
+               where tool_name=tcl.tool_name
+               and tool_version=tcl.tool_version)
+    	from tmp_content_language tcl
+            on conflict(id, indexer_configuration_id)
+            do nothing;
     end if;
     return;
 end
@@ -1592,41 +1643,18 @@ COMMENT ON FUNCTION swh_content_language_add(conflict_update boolean) IS 'Add ne
 
 
 --
--- Name: content_language; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE content_language (
-    id sha1 NOT NULL,
-    lang languages NOT NULL
-);
-
-
---
--- Name: TABLE content_language; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE content_language IS 'Language information on a raw content';
-
-
---
--- Name: COLUMN content_language.lang; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_language.lang IS 'Language information';
-
-
---
 -- Name: swh_content_language_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_language_get() RETURNS SETOF content_language
+CREATE FUNCTION swh_content_language_get() RETURNS SETOF content_language_signature
     LANGUAGE plpgsql
     AS $$
 begin
     return query
-        select id::sha1, lang
+        select c.id, lang, tool_name, tool_version
         from tmp_bytea t
-        inner join content_language using(id);
+        inner join content_language c on c.id = t.id
+        inner join indexer_configuration i on i.id=c.indexer_configuration_id;
     return;
 end
 $$;
@@ -1636,7 +1664,7 @@ $$;
 -- Name: FUNCTION swh_content_language_get(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_language_get() IS 'List content languages';
+COMMENT ON FUNCTION swh_content_language_get() IS 'List content''s language';
 
 
 --
@@ -1648,9 +1676,12 @@ CREATE FUNCTION swh_content_language_missing() RETURNS SETOF sha1
     AS $$
 begin
     return query
-	(select id::sha1 from tmp_bytea as tmp
-	 where not exists
-	     (select 1 from content_language as c where c.id = tmp.id));
+	select id::sha1 from tmp_content_language_missing as tmp
+	where not exists
+	    (select 1 from content_language as c
+            inner join indexer_configuration i
+            on (tmp.tool_name = i.tool_name and tmp.tool_version = i.tool_version)
+            where c.id = tmp.id);
     return;
 end
 $$;
@@ -1685,18 +1716,24 @@ CREATE FUNCTION swh_content_mimetype_add(conflict_update boolean) RETURNS void
     AS $$
 begin
     if conflict_update then
-        insert into content_mimetype (id, mimetype, encoding)
-        select id, mimetype, encoding
-        from tmp_content_mimetype
-            on conflict(id)
+        insert into content_mimetype (id, mimetype, encoding, indexer_configuration_id)
+        select id, mimetype, encoding,
+               (select id from indexer_configuration
+               where tool_name=tcm.tool_name
+               and tool_version=tcm.tool_version)
+        from tmp_content_mimetype tcm
+            on conflict(id, indexer_configuration_id)
                 do update set mimetype = excluded.mimetype,
-                    encoding = excluded.encoding;
+                              encoding = excluded.encoding;
 
     else
-        insert into content_mimetype (id, mimetype, encoding)
-        select id, mimetype, encoding
-         from tmp_content_mimetype
-            on conflict do nothing;
+        insert into content_mimetype (id, mimetype, encoding, indexer_configuration_id)
+        select id, mimetype, encoding,
+               (select id from indexer_configuration
+               where tool_name=tcm.tool_name
+               and tool_version=tcm.tool_version)
+         from tmp_content_mimetype tcm
+             on conflict(id, indexer_configuration_id) do nothing;
     end if;
     return;
 end
@@ -1711,49 +1748,18 @@ COMMENT ON FUNCTION swh_content_mimetype_add(conflict_update boolean) IS 'Add ne
 
 
 --
--- Name: content_mimetype; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE content_mimetype (
-    id sha1 NOT NULL,
-    mimetype bytea NOT NULL,
-    encoding bytea NOT NULL
-);
-
-
---
--- Name: TABLE content_mimetype; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE content_mimetype IS 'Metadata associated to a raw content';
-
-
---
--- Name: COLUMN content_mimetype.mimetype; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_mimetype.mimetype IS 'Raw content Mimetype';
-
-
---
--- Name: COLUMN content_mimetype.encoding; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_mimetype.encoding IS 'Raw content encoding';
-
-
---
 -- Name: swh_content_mimetype_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_mimetype_get() RETURNS SETOF content_mimetype
+CREATE FUNCTION swh_content_mimetype_get() RETURNS SETOF content_mimetype_signature
     LANGUAGE plpgsql
     AS $$
 begin
     return query
-        select id::sha1, mimetype, encoding
+        select c.id, mimetype, encoding, tool_name, tool_version
         from tmp_bytea t
-        inner join content_mimetype using(id);
+        inner join content_mimetype c on c.id=t.id
+        inner join indexer_configuration i on c.indexer_configuration_id=i.id;
     return;
 end
 $$;
@@ -1763,7 +1769,7 @@ $$;
 -- Name: FUNCTION swh_content_mimetype_get(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_mimetype_get() IS 'List content mimetypes';
+COMMENT ON FUNCTION swh_content_mimetype_get() IS 'List content''s mimetypes';
 
 
 --
@@ -1775,9 +1781,12 @@ CREATE FUNCTION swh_content_mimetype_missing() RETURNS SETOF sha1
     AS $$
 begin
     return query
-	(select id::sha1 from tmp_bytea as tmp
+	(select id::sha1 from tmp_content_mimetype_missing as tmp
 	 where not exists
-	     (select 1 from content_mimetype as c where c.id = tmp.id));
+	     (select 1 from content_mimetype as c
+              inner join indexer_configuration i
+              on (tmp.tool_name = i.tool_name and tmp.tool_version = i.tool_version)
+              where c.id = tmp.id));
     return;
 end
 $$;
@@ -1787,7 +1796,7 @@ $$;
 -- Name: FUNCTION swh_content_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_mimetype_missing() IS 'Filter missing content mimetype';
+COMMENT ON FUNCTION swh_content_mimetype_missing() IS 'Filter existing mimetype information';
 
 
 --
@@ -2175,6 +2184,52 @@ $$;
 
 
 --
+-- Name: swh_mktemp_content_ctags(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_content_ctags() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_content_ctags (
+    like content_ctags including defaults
+  ) on commit drop;
+  alter table tmp_content_ctags
+    drop column indexer_configuration_id,
+    add column tool_name text,
+    add column tool_version text;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_content_ctags(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_content_ctags() IS 'Helper table to add content ctags';
+
+
+--
+-- Name: swh_mktemp_content_ctags_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_content_ctags_missing() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_content_ctags_missing (
+    id           sha1,
+    tool_name    text,
+    tool_version text
+  ) on commit drop;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_content_ctags_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_content_ctags_missing() IS 'Helper table to filter missing content ctags';
+
+
+--
 -- Name: swh_mktemp_content_fossology_license(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -2198,6 +2253,28 @@ COMMENT ON FUNCTION swh_mktemp_content_fossology_license() IS 'Helper table to a
 
 
 --
+-- Name: swh_mktemp_content_fossology_license_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_content_fossology_license_missing() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_content_fossology_license_missing (
+    id bytea,
+    tool_name text,
+    tool_version text
+  ) on commit drop;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_content_fossology_license_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_content_fossology_license_missing() IS 'Helper table to add content license';
+
+
+--
 -- Name: swh_mktemp_content_fossology_license_unknown(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -2215,6 +2292,99 @@ $$;
 --
 
 COMMENT ON FUNCTION swh_mktemp_content_fossology_license_unknown() IS 'Helper table to list unknown licenses';
+
+
+--
+-- Name: swh_mktemp_content_language(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_content_language() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_content_language (
+    like content_language including defaults
+  ) on commit drop;
+  alter table tmp_content_language
+    drop column indexer_configuration_id,
+    add column tool_name text,
+    add column tool_version text;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_content_language(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_content_language() IS 'Helper table to add content language';
+
+
+--
+-- Name: swh_mktemp_content_language_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_content_language_missing() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_content_language_missing (
+    id sha1,
+    lang languages,
+    tool_name text,
+    tool_version text
+  ) on commit drop;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_content_language_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_content_language_missing() IS 'Helper table to filter missing language';
+
+
+--
+-- Name: swh_mktemp_content_mimetype(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_content_mimetype() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_content_mimetype (
+    like content_mimetype including defaults
+  ) on commit drop;
+  alter table tmp_content_mimetype
+    drop column indexer_configuration_id,
+    add column tool_name text,
+    add column tool_version text;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_content_mimetype(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_content_mimetype() IS 'Helper table to add mimetype information';
+
+
+--
+-- Name: swh_mktemp_content_mimetype_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_content_mimetype_missing() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_content_mimetype_missing (
+    id sha1,
+    tool_name text,
+    tool_version text
+  ) on commit drop;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_content_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_content_mimetype_missing() IS 'Helper table to filter existing mimetype information';
 
 
 --
@@ -3129,7 +3299,8 @@ CREATE TABLE content_ctags (
     name text NOT NULL,
     kind text NOT NULL,
     line bigint NOT NULL,
-    lang ctags_languages NOT NULL
+    lang ctags_languages NOT NULL,
+    indexer_configuration_id bigint NOT NULL
 );
 
 
@@ -3176,6 +3347,32 @@ COMMENT ON COLUMN content_ctags.lang IS 'Language information for that content';
 
 
 --
+-- Name: COLUMN content_ctags.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_ctags.indexer_configuration_id IS 'Tool used to compute the information';
+
+
+--
+-- Name: content_ctags_indexer_configuration_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE content_ctags_indexer_configuration_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: content_ctags_indexer_configuration_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE content_ctags_indexer_configuration_id_seq OWNED BY content_ctags.indexer_configuration_id;
+
+
+--
 -- Name: content_fossology_license; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3205,6 +3402,13 @@ COMMENT ON COLUMN content_fossology_license.id IS 'Raw content identifier';
 --
 
 COMMENT ON COLUMN content_fossology_license.license_id IS 'One of the content''s license identifier';
+
+
+--
+-- Name: COLUMN content_fossology_license.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_fossology_license.indexer_configuration_id IS 'Tool used to compute the information';
 
 
 --
@@ -3243,6 +3447,116 @@ CREATE SEQUENCE content_fossology_license_license_id_seq
 --
 
 ALTER SEQUENCE content_fossology_license_license_id_seq OWNED BY content_fossology_license.license_id;
+
+
+--
+-- Name: content_language; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_language (
+    id sha1 NOT NULL,
+    lang languages NOT NULL,
+    indexer_configuration_id bigint NOT NULL
+);
+
+
+--
+-- Name: TABLE content_language; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE content_language IS 'Language information on a raw content';
+
+
+--
+-- Name: COLUMN content_language.lang; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_language.lang IS 'Language information';
+
+
+--
+-- Name: COLUMN content_language.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_language.indexer_configuration_id IS 'Tool used to compute the information';
+
+
+--
+-- Name: content_language_indexer_configuration_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE content_language_indexer_configuration_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: content_language_indexer_configuration_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE content_language_indexer_configuration_id_seq OWNED BY content_language.indexer_configuration_id;
+
+
+--
+-- Name: content_mimetype; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_mimetype (
+    id sha1 NOT NULL,
+    mimetype bytea NOT NULL,
+    encoding bytea NOT NULL,
+    indexer_configuration_id bigint NOT NULL
+);
+
+
+--
+-- Name: TABLE content_mimetype; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE content_mimetype IS 'Metadata associated to a raw content';
+
+
+--
+-- Name: COLUMN content_mimetype.mimetype; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_mimetype.mimetype IS 'Raw content Mimetype';
+
+
+--
+-- Name: COLUMN content_mimetype.encoding; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_mimetype.encoding IS 'Raw content encoding';
+
+
+--
+-- Name: COLUMN content_mimetype.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_mimetype.indexer_configuration_id IS 'Tool used to compute the information';
+
+
+--
+-- Name: content_mimetype_indexer_configuration_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE content_mimetype_indexer_configuration_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: content_mimetype_indexer_configuration_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE content_mimetype_indexer_configuration_id_seq OWNED BY content_mimetype.indexer_configuration_id;
 
 
 --
@@ -3847,6 +4161,13 @@ ALTER TABLE ONLY content ALTER COLUMN object_id SET DEFAULT nextval('content_obj
 
 
 --
+-- Name: content_ctags indexer_configuration_id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_ctags ALTER COLUMN indexer_configuration_id SET DEFAULT nextval('content_ctags_indexer_configuration_id_seq'::regclass);
+
+
+--
 -- Name: content_fossology_license license_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3858,6 +4179,20 @@ ALTER TABLE ONLY content_fossology_license ALTER COLUMN license_id SET DEFAULT n
 --
 
 ALTER TABLE ONLY content_fossology_license ALTER COLUMN indexer_configuration_id SET DEFAULT nextval('content_fossology_license_indexer_configuration_id_seq'::regclass);
+
+
+--
+-- Name: content_language indexer_configuration_id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_language ALTER COLUMN indexer_configuration_id SET DEFAULT nextval('content_language_indexer_configuration_id_seq'::regclass);
+
+
+--
+-- Name: content_mimetype indexer_configuration_id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_mimetype ALTER COLUMN indexer_configuration_id SET DEFAULT nextval('content_mimetype_indexer_configuration_id_seq'::regclass);
 
 
 --
@@ -4001,8 +4336,15 @@ COPY content (sha1, sha1_git, sha256, length, ctime, status, object_id) FROM std
 -- Data for Name: content_ctags; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_ctags (id, name, kind, line, lang) FROM stdin;
+COPY content_ctags (id, name, kind, line, lang, indexer_configuration_id) FROM stdin;
 \.
+
+
+--
+-- Name: content_ctags_indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('content_ctags_indexer_configuration_id_seq', 1, false);
 
 
 --
@@ -4031,16 +4373,30 @@ SELECT pg_catalog.setval('content_fossology_license_license_id_seq', 1, false);
 -- Data for Name: content_language; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_language (id, lang) FROM stdin;
+COPY content_language (id, lang, indexer_configuration_id) FROM stdin;
 \.
+
+
+--
+-- Name: content_language_indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('content_language_indexer_configuration_id_seq', 1, false);
 
 
 --
 -- Data for Name: content_mimetype; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_mimetype (id, mimetype, encoding) FROM stdin;
+COPY content_mimetype (id, mimetype, encoding, indexer_configuration_id) FROM stdin;
 \.
+
+
+--
+-- Name: content_mimetype_indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('content_mimetype_indexer_configuration_id_seq', 1, false);
 
 
 --
@@ -4055,7 +4411,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-96	2016-12-01 10:30:30.332615+01	Work In Progress
+97	2016-12-02 18:11:21.495137+01	Work In Progress
 \.
 
 
@@ -4124,17 +4480,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-12-01 10:30:30.332615+01	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-12-01 10:30:30.332615+01	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2016-12-02 18:11:21.495137+01	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2016-12-02 18:11:21.495137+01	11
 \.
 
 
@@ -4151,17 +4507,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-12-01 10:30:30.332615+01"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2016-12-02 18:11:21.495137+01"}
 \.
 
 
@@ -5024,7 +5380,10 @@ SELECT pg_catalog.setval('fossology_license_id_seq', 817, true);
 --
 
 COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FROM stdin;
-1	nomos	3.1.0rc2-31-ga2cbb8c	{"command_line": "nomossa"}
+1	nomos	3.1.0rc2-31-ga2cbb8c	{"command_line": "nomossa <filepath>"}
+2	file	5.22	{"command_line": "file --mime <filepath>"}
+3	universal-ctags	~git7859817b	{"command_line": "ctags --fields=+lnz --sort=no --links=no --output-format=json <filepath>"}
+4	pygments	2.0.1+dfsg-1.1+deb8u1	{"type": "library", "debian-package": "python3-pygments"}
 \.
 
 
@@ -5032,7 +5391,7 @@ COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FRO
 -- Name: indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('indexer_configuration_id_seq', 1, true);
+SELECT pg_catalog.setval('indexer_configuration_id_seq', 4, true);
 
 
 --
@@ -5198,11 +5557,19 @@ ALTER TABLE ONLY cache_revision_origin
 
 
 --
+-- Name: content_fossology_license content_fossology_license_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_fossology_license
+    ADD CONSTRAINT content_fossology_license_pkey PRIMARY KEY (id, license_id, indexer_configuration_id);
+
+
+--
 -- Name: content_language content_language_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_language
-    ADD CONSTRAINT content_language_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT content_language_pkey PRIMARY KEY (id, indexer_configuration_id);
 
 
 --
@@ -5210,7 +5577,7 @@ ALTER TABLE ONLY content_language
 --
 
 ALTER TABLE ONLY content_mimetype
-    ADD CONSTRAINT content_mimetype_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT content_mimetype_pkey PRIMARY KEY (id, indexer_configuration_id);
 
 
 --
@@ -5412,10 +5779,10 @@ CREATE INDEX content_ctags_id_idx ON content_ctags USING btree (id);
 
 
 --
--- Name: content_ctags_id_md5_kind_line_lang_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: content_ctags_id_md5_kind_line_lang_indexer_configuration_i_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX content_ctags_id_md5_kind_line_lang_idx ON content_ctags USING btree (id, md5(name), kind, line, lang);
+CREATE UNIQUE INDEX content_ctags_id_md5_kind_line_lang_indexer_configuration_i_idx ON content_ctags USING btree (id, md5(name), kind, line, lang, indexer_configuration_id);
 
 
 --
@@ -5430,13 +5797,6 @@ CREATE INDEX content_ctags_name_idx ON content_ctags USING btree (name);
 --
 
 CREATE INDEX content_ctime_idx ON content USING btree (ctime);
-
-
---
--- Name: content_fossology_license_id_license_id_indexer_configurati_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX content_fossology_license_id_license_id_indexer_configurati_idx ON content_fossology_license USING btree (id, license_id, indexer_configuration_id);
 
 
 --
@@ -5774,6 +6134,14 @@ ALTER TABLE ONLY content_ctags
 
 
 --
+-- Name: content_ctags content_ctags_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_ctags
+    ADD CONSTRAINT content_ctags_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
+
+
+--
 -- Name: content_fossology_license content_fossology_license_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5806,11 +6174,27 @@ ALTER TABLE ONLY content_language
 
 
 --
+-- Name: content_language content_language_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_language
+    ADD CONSTRAINT content_language_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
+
+
+--
 -- Name: content_mimetype content_mimetype_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_mimetype
     ADD CONSTRAINT content_mimetype_id_fkey FOREIGN KEY (id) REFERENCES content(sha1);
+
+
+--
+-- Name: content_mimetype content_mimetype_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_mimetype
+    ADD CONSTRAINT content_mimetype_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
 
 
 --
