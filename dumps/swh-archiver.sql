@@ -2,11 +2,12 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.5.4
--- Dumped by pg_dump version 9.5.4
+-- Dumped from database version 9.6.1
+-- Dumped by pg_dump version 9.6.1
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
@@ -48,6 +49,20 @@ CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
 COMMENT ON EXTENSION btree_gist IS 'support for indexing common datatypes in GiST';
 
 
+--
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
 SET search_path = public, pg_catalog;
 
 --
@@ -75,6 +90,24 @@ COMMENT ON TYPE archive_status IS 'Status of a given archive';
 
 CREATE DOMAIN sha1 AS bytea
 	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
+
+
+--
+-- Name: hash_sha1(text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION hash_sha1(text) RETURNS text
+    LANGUAGE sql IMMUTABLE STRICT
+    AS $_$
+   select encode(digest($1, 'sha1'), 'hex')
+$_$;
+
+
+--
+-- Name: FUNCTION hash_sha1(text); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION hash_sha1(text) IS 'Compute sha1 hash as text';
 
 
 --
@@ -274,12 +307,12 @@ COPY content_archive (content_id, copies, num_present) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-5	2016-10-07 16:49:03.243275+02	Work In Progress
+5	2017-01-11 14:43:01.953097+01	Work In Progress
 \.
 
 
 --
--- Name: archive_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: archive archive_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY archive
@@ -287,7 +320,7 @@ ALTER TABLE ONLY archive
 
 
 --
--- Name: content_archive_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: content_archive content_archive_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY content_archive
@@ -295,7 +328,7 @@ ALTER TABLE ONLY content_archive
 
 
 --
--- Name: dbversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: dbversion dbversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY dbversion
@@ -310,20 +343,10 @@ CREATE INDEX content_archive_num_present_idx ON content_archive USING btree (num
 
 
 --
--- Name: update_num_present; Type: TRIGGER; Schema: public; Owner: -
+-- Name: content_archive update_num_present; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_num_present BEFORE INSERT OR UPDATE OF copies ON content_archive FOR EACH ROW EXECUTE PROCEDURE update_num_present();
-
-
---
--- Name: public; Type: ACL; Schema: -; Owner: -
---
-
-REVOKE ALL ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON SCHEMA public FROM postgres;
-GRANT ALL ON SCHEMA public TO postgres;
-GRANT ALL ON SCHEMA public TO PUBLIC;
 
 
 --
