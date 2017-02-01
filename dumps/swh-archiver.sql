@@ -307,7 +307,7 @@ COPY content_archive (content_id, copies, num_present) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-5	2017-01-11 14:43:01.953097+01	Work In Progress
+5	2017-02-01 15:40:35.096706+01	Work In Progress
 \.
 
 
