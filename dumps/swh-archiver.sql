@@ -85,11 +85,52 @@ COMMENT ON TYPE archive_status IS 'Status of a given archive';
 
 
 --
+-- Name: bucket; Type: DOMAIN; Schema: public; Owner: -
+--
+
+CREATE DOMAIN bucket AS bytea
+	CONSTRAINT bucket_check CHECK ((length(VALUE) = 2));
+
+
+--
 -- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
 --
 
 CREATE DOMAIN sha1 AS bytea
 	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
+
+
+--
+-- Name: count_copies(bytea, bytea); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION count_copies(from_id bytea, to_id bytea) RETURNS void
+    LANGUAGE sql
+    AS $$
+    with sample as (
+        select content_id, copies from content_archive
+        where content_id > from_id and content_id <= to_id
+    ), data as (
+        select substring(content_id from 19) as bucket, jbe.key as archive
+        from sample
+        join lateral jsonb_each(copies) jbe on true
+        where jbe.value->>'status' = 'present'
+    ), bucketed as (
+        select bucket, archive, count(*) as count
+        from data
+        group by bucket, archive
+    ) update content_archive_counts cac set
+        count = cac.count + bucketed.count
+      from bucketed
+      where cac.archive = bucketed.archive and cac.bucket = bucketed.bucket;
+$$;
+
+
+--
+-- Name: FUNCTION count_copies(from_id bytea, to_id bytea); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION count_copies(from_id bytea, to_id bytea) IS 'Count the objects between from_id and to_id, add the results to content_archive_counts';
 
 
 --
@@ -108,6 +149,27 @@ $_$;
 --
 
 COMMENT ON FUNCTION hash_sha1(text) IS 'Compute sha1 hash as text';
+
+
+--
+-- Name: init_content_archive_counts(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION init_content_archive_counts() RETURNS void
+    LANGUAGE sql
+    AS $$
+    insert into content_archive_counts (
+        select id, decode(lpad(to_hex(bucket), 4, '0'), 'hex')::bucket as bucket, 0 as count
+        from archive join lateral generate_series(0, 65535) bucket on true
+    ) on conflict (archive, bucket) do nothing;
+$$;
+
+
+--
+-- Name: FUNCTION init_content_archive_counts(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION init_content_archive_counts() IS 'Initialize the content archive counts for the registered archives';
 
 
 --
@@ -184,6 +246,54 @@ $$;
 --
 
 COMMENT ON FUNCTION swh_mktemp_content_archive() IS 'Create temporary table content_archive';
+
+
+--
+-- Name: update_content_archive_counts(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION update_content_archive_counts() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+        content_id sha1;
+        content_bucket bucket;
+        copies record;
+        old_row content_archive;
+        new_row content_archive;
+    BEGIN
+      -- default values for old or new row depending on trigger type
+      if tg_op = 'INSERT' then
+          old_row := (null::sha1, '{}'::jsonb, 0);
+      else
+          old_row := old;
+      end if;
+      if tg_op = 'DELETE' then
+          new_row := (null::sha1, '{}'::jsonb, 0);
+      else
+          new_row := new;
+      end if;
+
+      -- get the content bucket
+      content_id := coalesce(old_row.content_id, new_row.content_id);
+      content_bucket := substring(content_id from 19)::bucket;
+
+      -- compare copies present in old and new row for each archive type
+      FOR copies IN
+        select coalesce(o.key, n.key) as archive, o.value->>'status' as old_status, n.value->>'status' as new_status
+            from jsonb_each(old_row.copies) o full outer join lateral jsonb_each(new_row.copies) n on o.key = n.key
+      LOOP
+        -- the count didn't change
+        CONTINUE WHEN copies.old_status is distinct from copies.new_status OR
+                      (copies.old_status != 'present' AND copies.new_status != 'present');
+
+        update content_archive_counts cac
+            set count = count + (case when copies.old_status = 'present' then -1 else 1 end)
+            where archive = copies.archive and bucket = content_bucket;
+      END LOOP;
+      return null;
+    END;
+$$;
 
 
 --
@@ -267,6 +377,45 @@ COMMENT ON COLUMN content_archive.num_present IS 'Number of copies marked as pre
 
 
 --
+-- Name: content_archive_counts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_archive_counts (
+    archive text NOT NULL,
+    bucket bucket NOT NULL,
+    count bigint
+);
+
+
+--
+-- Name: TABLE content_archive_counts; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE content_archive_counts IS 'Bucketed count of archive contents';
+
+
+--
+-- Name: COLUMN content_archive_counts.archive; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_archive_counts.archive IS 'the archive for which we''re counting';
+
+
+--
+-- Name: COLUMN content_archive_counts.bucket; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_archive_counts.bucket IS 'the bucket of items we''re counting';
+
+
+--
+-- Name: COLUMN content_archive_counts.count; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN content_archive_counts.count IS 'the number of items counted in the given bucket';
+
+
+--
 -- Name: dbversion; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -289,6 +438,7 @@ COMMENT ON TABLE dbversion IS 'Schema update tracking';
 --
 
 COPY archive (id) FROM stdin;
+uffizi
 banco
 azure
 \.
@@ -303,11 +453,19 @@ COPY content_archive (content_id, copies, num_present) FROM stdin;
 
 
 --
+-- Data for Name: content_archive_counts; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY content_archive_counts (archive, bucket, count) FROM stdin;
+\.
+
+
+--
 -- Data for Name: dbversion; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-5	2017-02-01 15:40:35.096706+01	Work In Progress
+6	2017-02-07 18:29:46.298573+01	Work In Progress
 \.
 
 
@@ -317,6 +475,14 @@ COPY dbversion (version, release, description) FROM stdin;
 
 ALTER TABLE ONLY archive
     ADD CONSTRAINT archive_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: content_archive_counts content_archive_counts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_archive_counts
+    ADD CONSTRAINT content_archive_counts_pkey PRIMARY KEY (archive, bucket);
 
 
 --
@@ -343,10 +509,25 @@ CREATE INDEX content_archive_num_present_idx ON content_archive USING btree (num
 
 
 --
+-- Name: content_archive update_content_archive_counts; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_content_archive_counts AFTER INSERT OR DELETE OR UPDATE ON content_archive FOR EACH ROW EXECUTE PROCEDURE update_content_archive_counts();
+
+
+--
 -- Name: content_archive update_num_present; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_num_present BEFORE INSERT OR UPDATE OF copies ON content_archive FOR EACH ROW EXECUTE PROCEDURE update_num_present();
+
+
+--
+-- Name: content_archive_counts content_archive_counts_archive_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content_archive_counts
+    ADD CONSTRAINT content_archive_counts_archive_fkey FOREIGN KEY (archive) REFERENCES archive(id);
 
 
 --
