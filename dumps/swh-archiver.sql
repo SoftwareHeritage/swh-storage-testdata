@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.1
--- Dumped by pg_dump version 9.6.1
+-- Dumped from database version 9.6.2
+-- Dumped by pg_dump version 9.6.2
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -93,6 +93,16 @@ CREATE DOMAIN bucket AS bytea
 
 
 --
+-- Name: content_archive_count; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE content_archive_count AS (
+	archive text,
+	count bigint
+);
+
+
+--
 -- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
 --
 
@@ -134,6 +144,27 @@ COMMENT ON FUNCTION count_copies(from_id bytea, to_id bytea) IS 'Count the objec
 
 
 --
+-- Name: get_content_archive_counts(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION get_content_archive_counts() RETURNS SETOF content_archive_count
+    LANGUAGE sql
+    AS $$
+    select archive, sum(count)::bigint
+    from content_archive_counts
+    group by archive
+    order by archive;
+$$;
+
+
+--
+-- Name: FUNCTION get_content_archive_counts(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION get_content_archive_counts() IS 'Get count for each archive';
+
+
+--
 -- Name: hash_sha1(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -170,6 +201,30 @@ $$;
 --
 
 COMMENT ON FUNCTION init_content_archive_counts() IS 'Initialize the content archive counts for the registered archives';
+
+
+--
+-- Name: swh_content_archive_add(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_content_archive_add() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    insert into content_archive (content_id, copies, num_present)
+	select distinct content_id, copies, num_present
+	from tmp_content_archive
+        on conflict(content_id) do nothing;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_content_archive_add(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_content_archive_add() IS 'Helper function to insert new entry in content_archive';
 
 
 --
@@ -224,6 +279,31 @@ $$;
 --
 
 COMMENT ON FUNCTION swh_content_archive_unknown() IS 'Retrieve list of unknown sha1s';
+
+
+--
+-- Name: swh_mktemp(regclass); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp(tblname regclass) RETURNS void
+    LANGUAGE plpgsql
+    AS $_$
+begin
+    execute format('
+	create temporary table tmp_%1$I
+	    (like %1$I including defaults)
+	    on commit drop;
+	', tblname);
+    return;
+end
+$_$;
+
+
+--
+-- Name: FUNCTION swh_mktemp(tblname regclass); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp(tblname regclass) IS 'Helper function to create a temporary table mimicking the existing one';
 
 
 --
@@ -284,7 +364,7 @@ CREATE FUNCTION update_content_archive_counts() RETURNS trigger
             from jsonb_each(old_row.copies) o full outer join lateral jsonb_each(new_row.copies) n on o.key = n.key
       LOOP
         -- the count didn't change
-        CONTINUE WHEN copies.old_status is distinct from copies.new_status OR
+        CONTINUE WHEN copies.old_status is not distinct from copies.new_status OR
                       (copies.old_status != 'present' AND copies.new_status != 'present');
 
         update content_archive_counts cac
@@ -465,7 +545,7 @@ COPY content_archive_counts (archive, bucket, count) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-6	2017-02-07 18:29:46.298573+01	Work In Progress
+9	2017-03-16 16:01:08.497303+01	Work In Progress
 \.
 
 
