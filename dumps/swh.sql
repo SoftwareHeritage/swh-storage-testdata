@@ -66,6 +66,14 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 SET search_path = public, pg_catalog;
 
 --
+-- Name: blake2s256; Type: DOMAIN; Schema: public; Owner: -
+--
+
+CREATE DOMAIN blake2s256 AS bytea
+	CONSTRAINT blake2s256_check CHECK ((length(VALUE) = 32));
+
+
+--
 -- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
 --
 
@@ -714,7 +722,8 @@ COMMENT ON TYPE content_provenance IS 'Provenance information on content';
 CREATE TYPE content_signature AS (
 	sha1 sha1,
 	sha1_git sha1_git,
-	sha256 sha256
+	sha256 sha256,
+	blake2s256 blake2s256
 );
 
 
@@ -973,7 +982,8 @@ CREATE FUNCTION notify_new_content() RETURNS trigger
     perform pg_notify('new_content', json_build_object(
       'sha1', encode(new.sha1, 'hex'),
       'sha1_git', encode(new.sha1_git, 'hex'),
-      'sha256', encode(new.sha256, 'hex')
+      'sha256', encode(new.sha256, 'hex'),
+      'blake2s256', encode(new.blake2s256, 'hex')
     )::text);
     return null;
   end;
@@ -1064,7 +1074,8 @@ CREATE FUNCTION notify_new_skipped_content() RETURNS trigger
     perform pg_notify('new_skipped_content', json_build_object(
       'sha1', encode(new.sha1, 'hex'),
       'sha1_git', encode(new.sha1_git, 'hex'),
-      'sha256', encode(new.sha256, 'hex')
+      'sha256', encode(new.sha256, 'hex'),
+      'blake2s256', encode(new.blake2s256, 'hex')
     )::text);
     return null;
   end;
@@ -1250,14 +1261,16 @@ CREATE FUNCTION swh_content_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
-    insert into content (sha1, sha1_git, sha256, length, status)
-	select distinct sha1, sha1_git, sha256, length, status
+    insert into content (sha1, sha1_git, sha256, blake2s256, length, status)
+        select distinct sha1, sha1_git, sha256, blake2s256, length, status
 	from tmp_content
-	where (sha1, sha1_git, sha256) in
-	    (select * from swh_content_missing());
-	    -- TODO XXX use postgres 9.5 "UPSERT" support here, when available.
-	    -- Specifically, using "INSERT .. ON CONFLICT IGNORE" we can avoid
-	    -- the extra swh_content_missing() query here.
+	where (sha1, sha1_git, sha256) in (
+            select sha1, sha1_git, sha256
+            from swh_content_missing()
+        );
+        -- TODO XXX use postgres 9.5 "UPSERT" support here, when available.
+        -- Specifically, using "INSERT .. ON CONFLICT IGNORE" we can avoid
+        -- the extra swh_content_missing() query here.
     return;
 end
 $$;
@@ -1387,6 +1400,7 @@ CREATE TABLE content (
     sha1 sha1 NOT NULL,
     sha1_git sha1_git NOT NULL,
     sha256 sha256 NOT NULL,
+    blake2s256 blake2s256,
     length bigint NOT NULL,
     ctime timestamp with time zone DEFAULT now() NOT NULL,
     status content_status DEFAULT 'visible'::content_status NOT NULL,
@@ -1395,10 +1409,10 @@ CREATE TABLE content (
 
 
 --
--- Name: swh_content_find(sha1, sha1_git, sha256); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_content_find(sha1, sha1_git, sha256, blake2s256); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_find(sha1 sha1 DEFAULT NULL::bytea, sha1_git sha1_git DEFAULT NULL::bytea, sha256 sha256 DEFAULT NULL::bytea) RETURNS content
+CREATE FUNCTION swh_content_find(sha1 sha1 DEFAULT NULL::bytea, sha1_git sha1_git DEFAULT NULL::bytea, sha256 sha256 DEFAULT NULL::bytea, blake2s256 blake2s256 DEFAULT NULL::bytea) RETURNS content
     LANGUAGE plpgsql
     AS $$
 declare
@@ -1415,12 +1429,15 @@ begin
     if sha256 is not null then
         filters := filters || format('sha256 = %L', sha256);
     end if;
+    if blake2s256 is not null then
+        filters := filters || format('blake2s256 = %L', blake2s256);
+    end if;
 
     if cardinality(filters) = 0 then
         return null;
     else
         q = format('select * from content where %s',
-	        array_to_string(filters, ' and '));
+                   array_to_string(filters, ' and '));
         execute q into con;
 	return con;
     end if;
@@ -1813,10 +1830,12 @@ CREATE FUNCTION swh_content_missing() RETURNS SETOF content_signature
     AS $$
 begin
     return query (
-      select sha1, sha1_git, sha256 from tmp_content as tmp
+      select sha1, sha1_git, sha256, blake2s256 from tmp_content as tmp
       where not exists (
         select 1 from content as c
-        where c.sha1 = tmp.sha1 and c.sha1_git = tmp.sha1_git and c.sha256 = tmp.sha256
+        where c.sha1 = tmp.sha1 and
+              c.sha1_git = tmp.sha1_git and
+              c.sha256 = tmp.sha256
       )
     );
     return;
@@ -3094,14 +3113,16 @@ CREATE FUNCTION swh_skipped_content_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
-    insert into skipped_content (sha1, sha1_git, sha256, length, status, reason, origin)
-	select distinct sha1, sha1_git, sha256, length, status, reason, origin
+    insert into skipped_content (sha1, sha1_git, sha256, blake2s256, length, status, reason, origin)
+        select distinct sha1, sha1_git, sha256, blake2s256, length, status, reason, origin
 	from tmp_skipped_content
-	where (coalesce(sha1, ''), coalesce(sha1_git, ''), coalesce(sha256, '')) in
-	    (select coalesce(sha1, ''), coalesce(sha1_git, ''), coalesce(sha256, '') from swh_skipped_content_missing());
-	    -- TODO XXX use postgres 9.5 "UPSERT" support here, when available.
-	    -- Specifically, using "INSERT .. ON CONFLICT IGNORE" we can avoid
-	    -- the extra swh_content_missing() query here.
+	where (coalesce(sha1, ''), coalesce(sha1_git, ''), coalesce(sha256, '')) in (
+            select coalesce(sha1, ''), coalesce(sha1_git, ''), coalesce(sha256, '')
+            from swh_skipped_content_missing()
+        );
+        -- TODO XXX use postgres 9.5 "UPSERT" support here, when available.
+        -- Specifically, using "INSERT .. ON CONFLICT IGNORE" we can avoid
+        -- the extra swh_content_missing() query here.
     return;
 end
 $$;
@@ -3116,7 +3137,7 @@ CREATE FUNCTION swh_skipped_content_missing() RETURNS SETOF content_signature
     AS $$
 begin
     return query
-	select sha1, sha1_git, sha256 from tmp_skipped_content t
+	select sha1, sha1_git, sha256, blake2s256 from tmp_skipped_content t
 	where not exists
 	(select 1 from skipped_content s where
 	    s.sha1 is not distinct from t.sha1 and
@@ -4066,6 +4087,7 @@ CREATE TABLE skipped_content (
     sha1 sha1,
     sha1_git sha1_git,
     sha256 sha256,
+    blake2s256 blake2s256,
     length bigint NOT NULL,
     ctime timestamp with time zone DEFAULT now() NOT NULL,
     status content_status DEFAULT 'absent'::content_status NOT NULL,
@@ -4241,7 +4263,7 @@ COPY cache_revision_origin (revision, origin, visit) FROM stdin;
 -- Data for Name: content; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content (sha1, sha1_git, sha256, length, ctime, status, object_id) FROM stdin;
+COPY content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, object_id) FROM stdin;
 \.
 
 
@@ -4296,11 +4318,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-<<<<<<< Updated upstream
-102	2017-03-16 16:01:09.015597+01	Work In Progress
-=======
-103	2017-03-23 15:43:36.222578+01	Work In Progress
->>>>>>> Stashed changes
+104	2017-03-31 12:31:18.68883+02	Work In Progress
 \.
 
 
@@ -4369,31 +4387,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-<<<<<<< Updated upstream
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2017-03-16 16:01:09.155839+01	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2017-03-16 16:01:09.155839+01	11
-=======
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2017-03-23 15:43:36.361915+01	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2017-03-23 15:43:36.361915+01	11
->>>>>>> Stashed changes
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2017-03-31 12:31:19.558795+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	11
 \.
 
 
@@ -4410,31 +4414,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-<<<<<<< Updated upstream
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2017-03-16 16:01:09.155839+01"}
-=======
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2017-03-23 15:43:36.361915+01"}
->>>>>>> Stashed changes
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
 \.
 
 
@@ -5438,7 +5428,7 @@ SELECT pg_catalog.setval('revision_object_id_seq', 1, false);
 -- Data for Name: skipped_content; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY skipped_content (sha1, sha1_git, sha256, length, ctime, status, reason, origin, object_id) FROM stdin;
+COPY skipped_content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, reason, origin, object_id) FROM stdin;
 \.
 
 
@@ -5689,6 +5679,13 @@ CREATE INDEX cache_revision_origin_revision_idx ON cache_revision_origin USING b
 
 
 --
+-- Name: content_blake2s256_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX content_blake2s256_idx ON content USING btree (blake2s256);
+
+
+--
 -- Name: content_ctags_hash_sha1_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5734,7 +5731,7 @@ CREATE UNIQUE INDEX content_sha1_git_idx ON content USING btree (sha1_git);
 -- Name: content_sha256_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX content_sha256_idx ON content USING btree (sha256);
+CREATE INDEX content_sha256_idx ON content USING btree (sha256);
 
 
 --
@@ -5920,6 +5917,13 @@ CREATE INDEX revision_object_id_idx ON revision USING btree (object_id);
 
 
 --
+-- Name: skipped_content_blake2s256_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX skipped_content_blake2s256_idx ON skipped_content USING btree (blake2s256);
+
+
+--
 -- Name: skipped_content_object_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5944,7 +5948,7 @@ CREATE UNIQUE INDEX skipped_content_sha1_idx ON skipped_content USING btree (sha
 -- Name: skipped_content_sha256_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX skipped_content_sha256_idx ON skipped_content USING btree (sha256);
+CREATE INDEX skipped_content_sha256_idx ON skipped_content USING btree (sha256);
 
 
 --
