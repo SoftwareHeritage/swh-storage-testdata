@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.2
--- Dumped by pg_dump version 9.6.2
+-- Dumped from database version 9.6.3
+-- Dumped by pg_dump version 9.6.3
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -221,8 +221,10 @@ CREATE TYPE content_ctags_signature AS (
 	kind text,
 	line bigint,
 	lang ctags_languages,
+	tool_id integer,
 	tool_name text,
-	tool_version text
+	tool_version text,
+	tool_configuration jsonb
 );
 
 
@@ -249,8 +251,10 @@ CREATE TYPE content_dir AS (
 
 CREATE TYPE content_fossology_license_signature AS (
 	id sha1,
+	tool_id integer,
 	tool_name text,
 	tool_version text,
+	tool_configuration jsonb,
 	licenses text[]
 );
 
@@ -677,8 +681,10 @@ COMMENT ON TYPE languages IS 'Languages recognized by language indexer';
 CREATE TYPE content_language_signature AS (
 	id sha1,
 	lang languages,
+	tool_id integer,
 	tool_name text,
-	tool_version text
+	tool_version text,
+	tool_configuration jsonb
 );
 
 
@@ -690,8 +696,10 @@ CREATE TYPE content_mimetype_signature AS (
 	id sha1,
 	mimetype bytea,
 	encoding bytea,
+	tool_id integer,
 	tool_name text,
-	tool_version text
+	tool_version text,
+	tool_configuration jsonb
 );
 
 
@@ -1288,14 +1296,11 @@ begin
         delete from content_ctags
         where id in (select tmp.id
                      from tmp_content_ctags tmp
-                     inner join indexer_configuration i on (i.tool_name=tmp.tool_name and i.tool_version = tmp.tool_version));
+                     inner join indexer_configuration i on i.id=tmp.indexer_configuration_id);
     end if;
 
     insert into content_ctags (id, name, kind, line, lang, indexer_configuration_id)
-    select id, name, kind, line, lang,
-           (select id from indexer_configuration
-            where tool_name=tct.tool_name
-            and tool_version=tct.tool_version)
+    select id, name, kind, line, lang, indexer_configuration_id
     from tmp_content_ctags tct
         on conflict(id, hash_sha1(name), kind, line, lang, indexer_configuration_id)
         do nothing;
@@ -1320,7 +1325,8 @@ CREATE FUNCTION swh_content_ctags_get() RETURNS SETOF content_ctags_signature
     AS $$
 begin
     return query
-        select c.id, c.name, c.kind, c.line, c.lang, i.tool_name, i.tool_version
+        select c.id, c.name, c.kind, c.line, c.lang,
+               i.id as tool_id, i.tool_name, i.tool_version, i.tool_configuration
         from tmp_bytea t
         inner join content_ctags c using(id)
         inner join indexer_configuration i on i.id = c.indexer_configuration_id
@@ -1349,9 +1355,8 @@ begin
 	(select id::sha1 from tmp_content_ctags_missing as tmp
 	 where not exists
 	     (select 1 from content_ctags as c
-              inner join indexer_configuration i
-              on (tmp.tool_name = i.tool_name and tmp.tool_version = i.tool_version)
-              where c.id = tmp.id limit 1));
+              where c.id = tmp.id and c.indexer_configuration_id=tmp.indexer_configuration_id
+              limit 1));
     return;
 end
 $$;
@@ -1371,7 +1376,8 @@ COMMENT ON FUNCTION swh_content_ctags_missing() IS 'Filter missing content ctags
 CREATE FUNCTION swh_content_ctags_search(expression text, l integer DEFAULT 10, last_sha1 sha1 DEFAULT '\x0000000000000000000000000000000000000000'::bytea) RETURNS SETOF content_ctags_signature
     LANGUAGE sql
     AS $$
-    select c.id, name, kind, line, lang, tool_name, tool_version
+    select c.id, name, kind, line, lang,
+           i.id as tool_id, tool_name, tool_version, tool_configuration
     from content_ctags c
     inner join indexer_configuration i on i.id = c.indexer_configuration_id
     where hash_sha1(name) = hash_sha1(expression)
@@ -1516,19 +1522,17 @@ begin
     if conflict_update then
         -- delete from content_fossology_license c
         --   using tmp_content_fossology_license tmp, indexer_configuration i
-        --   where c.id = tmp.id and i.tool_name = tmp.tool_name and i.tool_version = tmp.tool_version;
+        --   where c.id = tmp.id and i.id=tmp.indexer_configuration_id
         delete from content_fossology_license
         where id in (select tmp.id
                      from tmp_content_fossology_license tmp
-                     inner join indexer_configuration i on (i.tool_name=tmp.tool_name and i.tool_version = tmp.tool_version));
+                     inner join indexer_configuration i on i.id=tmp.indexer_configuration_id);
     end if;
 
     insert into content_fossology_license (id, license_id, indexer_configuration_id)
     select tcl.id,
           (select id from fossology_license where name = tcl.license) as license,
-          (select id from indexer_configuration where tool_name = tcl.tool_name
-                                                and tool_version = tcl.tool_version)
-                          as indexer_configuration_id
+          indexer_configuration_id
     from tmp_content_fossology_license tcl
         on conflict(id, license_id, indexer_configuration_id)
         do nothing;
@@ -1554,15 +1558,17 @@ CREATE FUNCTION swh_content_fossology_license_get() RETURNS SETOF content_fossol
 begin
     return query
       select cl.id,
+             ic.id as tool_id,
              ic.tool_name,
              ic.tool_version,
+             ic.tool_configuration,
              array(select name
                    from fossology_license
                    where id = ANY(array_agg(cl.license_id))) as licenses
       from tmp_bytea tcl
       inner join content_fossology_license cl using(id)
       inner join indexer_configuration ic on ic.id=cl.indexer_configuration_id
-      group by cl.id, ic.tool_name, ic.tool_version;
+      group by cl.id, ic.id, ic.tool_name, ic.tool_version, ic.tool_configuration;
     return;
 end
 $$;
@@ -1587,8 +1593,7 @@ begin
 	(select id::sha1 from tmp_content_fossology_license_missing as tmp
 	 where not exists
 	     (select 1 from content_fossology_license as c
-              inner join indexer_configuration i on i.id=c.indexer_configuration_id
-              where c.id = tmp.id));
+              where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id));
     return;
 end
 $$;
@@ -1634,20 +1639,14 @@ CREATE FUNCTION swh_content_language_add(conflict_update boolean) RETURNS void
 begin
     if conflict_update then
         insert into content_language (id, lang, indexer_configuration_id)
-        select id, lang,
-               (select id from indexer_configuration
-               where tool_name=tcl.tool_name
-               and tool_version=tcl.tool_version)
+        select id, lang, indexer_configuration_id
     	from tmp_content_language tcl
             on conflict(id, indexer_configuration_id)
                 do update set lang = excluded.lang;
 
     else
         insert into content_language (id, lang, indexer_configuration_id)
-        select id, lang,
-               (select id from indexer_configuration
-               where tool_name=tcl.tool_name
-               and tool_version=tcl.tool_version)
+        select id, lang, indexer_configuration_id
     	from tmp_content_language tcl
             on conflict(id, indexer_configuration_id)
             do nothing;
@@ -1673,7 +1672,7 @@ CREATE FUNCTION swh_content_language_get() RETURNS SETOF content_language_signat
     AS $$
 begin
     return query
-        select c.id, lang, tool_name, tool_version
+        select c.id, lang, i.id as tool_id, tool_name, tool_version, tool_configuration
         from tmp_bytea t
         inner join content_language c on c.id = t.id
         inner join indexer_configuration i on i.id=c.indexer_configuration_id;
@@ -1701,9 +1700,7 @@ begin
 	select id::sha1 from tmp_content_language_missing as tmp
 	where not exists
 	    (select 1 from content_language as c
-            inner join indexer_configuration i
-            on (tmp.tool_name = i.tool_name and tmp.tool_version = i.tool_version)
-            where c.id = tmp.id);
+             where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id);
     return;
 end
 $$;
@@ -1739,10 +1736,7 @@ CREATE FUNCTION swh_content_mimetype_add(conflict_update boolean) RETURNS void
 begin
     if conflict_update then
         insert into content_mimetype (id, mimetype, encoding, indexer_configuration_id)
-        select id, mimetype, encoding,
-               (select id from indexer_configuration
-               where tool_name=tcm.tool_name
-               and tool_version=tcm.tool_version)
+        select id, mimetype, encoding, indexer_configuration_id
         from tmp_content_mimetype tcm
             on conflict(id, indexer_configuration_id)
                 do update set mimetype = excluded.mimetype,
@@ -1750,12 +1744,9 @@ begin
 
     else
         insert into content_mimetype (id, mimetype, encoding, indexer_configuration_id)
-        select id, mimetype, encoding,
-               (select id from indexer_configuration
-               where tool_name=tcm.tool_name
-               and tool_version=tcm.tool_version)
-         from tmp_content_mimetype tcm
-             on conflict(id, indexer_configuration_id) do nothing;
+        select id, mimetype, encoding, indexer_configuration_id
+        from tmp_content_mimetype tcm
+            on conflict(id, indexer_configuration_id) do nothing;
     end if;
     return;
 end
@@ -1778,7 +1769,8 @@ CREATE FUNCTION swh_content_mimetype_get() RETURNS SETOF content_mimetype_signat
     AS $$
 begin
     return query
-        select c.id, mimetype, encoding, tool_name, tool_version
+        select c.id, mimetype, encoding,
+               i.id as tool_id, tool_name, tool_version, tool_configuration
         from tmp_bytea t
         inner join content_mimetype c on c.id=t.id
         inner join indexer_configuration i on c.indexer_configuration_id=i.id;
@@ -1806,9 +1798,7 @@ begin
 	(select id::sha1 from tmp_content_mimetype_missing as tmp
 	 where not exists
 	     (select 1 from content_mimetype as c
-              inner join indexer_configuration i
-              on (tmp.tool_name = i.tool_name and tmp.tool_version = i.tool_version)
-              where c.id = tmp.id));
+              where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id));
     return;
 end
 $$;
@@ -2233,10 +2223,6 @@ CREATE FUNCTION swh_mktemp_content_ctags() RETURNS void
   create temporary table tmp_content_ctags (
     like content_ctags including defaults
   ) on commit drop;
-  alter table tmp_content_ctags
-    drop column indexer_configuration_id,
-    add column tool_name text,
-    add column tool_version text;
 $$;
 
 
@@ -2256,8 +2242,7 @@ CREATE FUNCTION swh_mktemp_content_ctags_missing() RETURNS void
     AS $$
   create temporary table tmp_content_ctags_missing (
     id           sha1,
-    tool_name    text,
-    tool_version text
+    indexer_configuration_id    integer
   ) on commit drop;
 $$;
 
@@ -2277,10 +2262,9 @@ CREATE FUNCTION swh_mktemp_content_fossology_license() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_fossology_license (
-    id           sha1,
-    tool_name    text,
-    tool_version text,
-    license      text
+    id                       sha1,
+    license                  text,
+    indexer_configuration_id integer
   ) on commit drop;
 $$;
 
@@ -2300,9 +2284,8 @@ CREATE FUNCTION swh_mktemp_content_fossology_license_missing() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_fossology_license_missing (
-    id bytea,
-    tool_name text,
-    tool_version text
+    id                       bytea,
+    indexer_configuration_id integer
   ) on commit drop;
 $$;
 
@@ -2344,10 +2327,6 @@ CREATE FUNCTION swh_mktemp_content_language() RETURNS void
   create temporary table tmp_content_language (
     like content_language including defaults
   ) on commit drop;
-  alter table tmp_content_language
-    drop column indexer_configuration_id,
-    add column tool_name text,
-    add column tool_version text;
 $$;
 
 
@@ -2367,9 +2346,7 @@ CREATE FUNCTION swh_mktemp_content_language_missing() RETURNS void
     AS $$
   create temporary table tmp_content_language_missing (
     id sha1,
-    lang languages,
-    tool_name text,
-    tool_version text
+    indexer_configuration_id integer
   ) on commit drop;
 $$;
 
@@ -2391,10 +2368,6 @@ CREATE FUNCTION swh_mktemp_content_mimetype() RETURNS void
   create temporary table tmp_content_mimetype (
     like content_mimetype including defaults
   ) on commit drop;
-  alter table tmp_content_mimetype
-    drop column indexer_configuration_id,
-    add column tool_name text,
-    add column tool_version text;
 $$;
 
 
@@ -2414,8 +2387,7 @@ CREATE FUNCTION swh_mktemp_content_mimetype_missing() RETURNS void
     AS $$
   create temporary table tmp_content_mimetype_missing (
     id sha1,
-    tool_name text,
-    tool_version text
+    indexer_configuration_id bigint
   ) on commit drop;
 $$;
 
@@ -3155,9 +3127,9 @@ $$;
 CREATE FUNCTION swh_stat_counters() RETURNS SETOF counter
     LANGUAGE sql STABLE
     AS $$
-    select relname::text as label, reltuples::bigint as value
-    from pg_class
-    where oid in (
+    select relname::text as label, n_live_tup::bigint - n_dead_tup::bigint as value
+    from pg_stat_user_tables
+    where relid in (
         'public.content'::regclass,
         'public.directory'::regclass,
         'public.directory_entry_dir'::regclass,
@@ -4318,7 +4290,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-104	2017-03-31 12:31:18.68883+02	Work In Progress
+106	2017-06-02 15:23:05.335381+02	Work In Progress
 \.
 
 
@@ -4387,17 +4359,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2017-03-31 12:31:19.558795+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2017-03-31 12:31:19.558795+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2017-06-02 15:23:05.504377+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2017-06-02 15:23:05.504377+02	11
 \.
 
 
@@ -4414,17 +4386,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2017-03-31 12:31:19.558795+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2017-06-02 15:23:05.504377+02"}
 \.
 
 
@@ -5291,6 +5263,7 @@ COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FRO
 2	file	5.22	{"command_line": "file --mime <filepath>"}
 3	universal-ctags	~git7859817b	{"command_line": "ctags --fields=+lnz --sort=no --links=no --output-format=json <filepath>"}
 4	pygments	2.0.1+dfsg-1.1+deb8u1	{"type": "library", "debian-package": "python3-pygments"}
+5	pygments	2.0.1+dfsg-1.1+deb8u1	{"type": "library", "debian-package": "python3-pygments", "max_content_size": 10240}
 \.
 
 
@@ -5298,7 +5271,7 @@ COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FRO
 -- Name: indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('indexer_configuration_id_seq', 4, true);
+SELECT pg_catalog.setval('indexer_configuration_id_seq', 5, true);
 
 
 --
@@ -5819,10 +5792,10 @@ CREATE UNIQUE INDEX fossology_license_name_idx ON fossology_license USING btree 
 
 
 --
--- Name: indexer_configuration_tool_name_tool_version_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: indexer_configuration_tool_name_tool_version_tool_configura_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX indexer_configuration_tool_name_tool_version_idx ON indexer_configuration USING btree (tool_name, tool_version);
+CREATE UNIQUE INDEX indexer_configuration_tool_name_tool_version_tool_configura_idx ON indexer_configuration USING btree (tool_name, tool_version, tool_configuration);
 
 
 --
