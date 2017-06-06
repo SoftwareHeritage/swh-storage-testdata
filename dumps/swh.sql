@@ -1519,6 +1519,12 @@ CREATE FUNCTION swh_content_fossology_license_add(conflict_update boolean) RETUR
     LANGUAGE plpgsql
     AS $$
 begin
+    -- insert unknown licenses first
+    insert into fossology_license (name)
+    select distinct license from tmp_content_fossology_license tmp
+    where not exists (select 1 from fossology_license where name=tmp.license)
+    on conflict(name) do nothing;
+
     if conflict_update then
         -- delete from content_fossology_license c
         --   using tmp_content_fossology_license tmp, indexer_configuration i
@@ -1579,54 +1585,6 @@ $$;
 --
 
 COMMENT ON FUNCTION swh_content_fossology_license_get() IS 'List content licenses';
-
-
---
--- Name: swh_content_fossology_license_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_content_fossology_license_missing() RETURNS SETOF sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	(select id::sha1 from tmp_content_fossology_license_missing as tmp
-	 where not exists
-	     (select 1 from content_fossology_license as c
-              where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id));
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_fossology_license_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_content_fossology_license_missing() IS 'Filter missing content licenses';
-
-
---
--- Name: swh_content_fossology_license_unknown(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_content_fossology_license_unknown() RETURNS SETOF text
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select name from tmp_content_fossology_license_unknown t where not exists (
-            select 1 from fossology_license where name=t.name
-        );
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_fossology_license_unknown(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_content_fossology_license_unknown() IS 'List unknown licenses';
 
 
 --
@@ -2274,47 +2232,6 @@ $$;
 --
 
 COMMENT ON FUNCTION swh_mktemp_content_fossology_license() IS 'Helper table to add content license';
-
-
---
--- Name: swh_mktemp_content_fossology_license_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_mktemp_content_fossology_license_missing() RETURNS void
-    LANGUAGE sql
-    AS $$
-  create temporary table tmp_content_fossology_license_missing (
-    id                       bytea,
-    indexer_configuration_id integer
-  ) on commit drop;
-$$;
-
-
---
--- Name: FUNCTION swh_mktemp_content_fossology_license_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_mktemp_content_fossology_license_missing() IS 'Helper table to add content license';
-
-
---
--- Name: swh_mktemp_content_fossology_license_unknown(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_mktemp_content_fossology_license_unknown() RETURNS void
-    LANGUAGE sql
-    AS $$
-  create temporary table tmp_content_fossology_license_unknown (
-    name       text not null
-  ) on commit drop;
-$$;
-
-
---
--- Name: FUNCTION swh_mktemp_content_fossology_license_unknown(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_mktemp_content_fossology_license_unknown() IS 'Helper table to list unknown licenses';
 
 
 --
@@ -4290,7 +4207,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-106	2017-06-02 15:23:05.335381+02	Work In Progress
+107	2017-06-06 17:49:24.640099+02	Work In Progress
 \.
 
 
