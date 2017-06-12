@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.2
--- Dumped by pg_dump version 9.6.2
+-- Dumped from database version 9.6.3
+-- Dumped by pg_dump version 9.6.3
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -81,7 +81,7 @@ CREATE TYPE archive_status AS ENUM (
 -- Name: TYPE archive_status; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE archive_status IS 'Status of a given archive';
+COMMENT ON TYPE archive_status IS 'Status of a given copy of a content';
 
 
 --
@@ -93,75 +93,11 @@ CREATE DOMAIN bucket AS bytea
 
 
 --
--- Name: content_archive_count; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE content_archive_count AS (
-	archive text,
-	count bigint
-);
-
-
---
 -- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
 --
 
 CREATE DOMAIN sha1 AS bytea
 	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
-
-
---
--- Name: count_copies(bytea, bytea); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION count_copies(from_id bytea, to_id bytea) RETURNS void
-    LANGUAGE sql
-    AS $$
-    with sample as (
-        select content_id, copies from content_archive
-        where content_id > from_id and content_id <= to_id
-    ), data as (
-        select substring(content_id from 19) as bucket, jbe.key as archive
-        from sample
-        join lateral jsonb_each(copies) jbe on true
-        where jbe.value->>'status' = 'present'
-    ), bucketed as (
-        select bucket, archive, count(*) as count
-        from data
-        group by bucket, archive
-    ) update content_archive_counts cac set
-        count = cac.count + bucketed.count
-      from bucketed
-      where cac.archive = bucketed.archive and cac.bucket = bucketed.bucket;
-$$;
-
-
---
--- Name: FUNCTION count_copies(from_id bytea, to_id bytea); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION count_copies(from_id bytea, to_id bytea) IS 'Count the objects between from_id and to_id, add the results to content_archive_counts';
-
-
---
--- Name: get_content_archive_counts(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION get_content_archive_counts() RETURNS SETOF content_archive_count
-    LANGUAGE sql
-    AS $$
-    select archive, sum(count)::bigint
-    from content_archive_counts
-    group by archive
-    order by archive;
-$$;
-
-
---
--- Name: FUNCTION get_content_archive_counts(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION get_content_archive_counts() IS 'Get count for each archive';
 
 
 --
@@ -183,210 +119,51 @@ COMMENT ON FUNCTION hash_sha1(text) IS 'Compute sha1 hash as text';
 
 
 --
--- Name: init_content_archive_counts(); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_content_copies_from_temp(text[]); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION init_content_archive_counts() RETURNS void
-    LANGUAGE sql
+CREATE FUNCTION swh_content_copies_from_temp(archive_names text[]) RETURNS void
+    LANGUAGE plpgsql
     AS $$
-    insert into content_archive_counts (
-        select id, decode(lpad(to_hex(bucket), 4, '0'), 'hex')::bucket as bucket, 0 as count
-        from archive join lateral generate_series(0, 65535) bucket on true
-    ) on conflict (archive, bucket) do nothing;
+  begin
+    with existing_content_ids as (
+        select id
+        from content
+        inner join tmp_content on content.sha1 = tmp.sha1
+    ), created_content_ids as (
+        insert into content (sha1)
+        select sha1 from tmp_content
+        on conflict do nothing
+        returning id
+    ), content_ids as (
+        select * from existing_content_ids
+        union all
+        select * from created_content_ids
+    ), archive_ids as (
+        select id from archive
+        where name = any(archive_names)
+    ) insert into content_copies (content_id, archive_id, mtime, status)
+    select content_ids.id, archive_ids.id, now(), 'present'
+    from content_ids cross join archive_ids
+    on conflict (content_id, archive_id) do update
+      set mtime = excluded.mtime, status = excluded.status;
+  end
 $$;
 
 
 --
--- Name: FUNCTION init_content_archive_counts(); Type: COMMENT; Schema: public; Owner: -
+-- Name: swh_mktemp_content(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION init_content_archive_counts() IS 'Initialize the content archive counts for the registered archives';
-
-
---
--- Name: swh_content_archive_add(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_content_archive_add() RETURNS void
+CREATE FUNCTION swh_mktemp_content() RETURNS void
     LANGUAGE plpgsql
     AS $$
-begin
-    insert into content_archive (content_id, copies, num_present)
-	select distinct content_id, copies, num_present
-	from tmp_content_archive
-        on conflict(content_id) do nothing;
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_archive_add(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_content_archive_add() IS 'Helper function to insert new entry in content_archive';
-
-
---
--- Name: swh_content_archive_missing(text); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_content_archive_missing(backend_name text) RETURNS SETOF sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select content_id
-        from tmp_content_archive tmp where exists (
-            select 1
-            from content_archive c
-            where tmp.content_id = c.content_id
-                and (not c.copies ? backend_name
-                     or c.copies @> jsonb_build_object(backend_name, '{"status": "missing"}'::jsonb))
-        );
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_archive_missing(backend_name text); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_content_archive_missing(backend_name text) IS 'Filter missing data from a specific backend';
-
-
---
--- Name: swh_content_archive_unknown(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_content_archive_unknown() RETURNS SETOF sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select content_id
-        from tmp_content_archive tmp where not exists (
-            select 1
-            from content_archive c
-            where tmp.content_id = c.content_id
-        );
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_archive_unknown(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_content_archive_unknown() IS 'Retrieve list of unknown sha1s';
-
-
---
--- Name: swh_mktemp(regclass); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_mktemp(tblname regclass) RETURNS void
-    LANGUAGE plpgsql
-    AS $_$
-begin
-    execute format('
-	create temporary table tmp_%1$I
-	    (like %1$I including defaults)
-	    on commit drop;
-	', tblname);
-    return;
-end
-$_$;
-
-
---
--- Name: FUNCTION swh_mktemp(tblname regclass); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_mktemp(tblname regclass) IS 'Helper function to create a temporary table mimicking the existing one';
-
-
---
--- Name: swh_mktemp_content_archive(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_mktemp_content_archive() RETURNS void
-    LANGUAGE sql
-    AS $$
-    create temporary table tmp_content_archive (
-        like content_archive including defaults
+  begin
+    create temporary table tmp_content (
+        sha1 sha1 not null
     ) on commit drop;
-    alter table tmp_content_archive drop column copies;
-    alter table tmp_content_archive drop column num_present;
-$$;
-
-
---
--- Name: FUNCTION swh_mktemp_content_archive(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION swh_mktemp_content_archive() IS 'Create temporary table content_archive';
-
-
---
--- Name: update_content_archive_counts(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION update_content_archive_counts() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-    DECLARE
-        content_id sha1;
-        content_bucket bucket;
-        copies record;
-        old_row content_archive;
-        new_row content_archive;
-    BEGIN
-      -- default values for old or new row depending on trigger type
-      if tg_op = 'INSERT' then
-          old_row := (null::sha1, '{}'::jsonb, 0);
-      else
-          old_row := old;
-      end if;
-      if tg_op = 'DELETE' then
-          new_row := (null::sha1, '{}'::jsonb, 0);
-      else
-          new_row := new;
-      end if;
-
-      -- get the content bucket
-      content_id := coalesce(old_row.content_id, new_row.content_id);
-      content_bucket := substring(content_id from 19)::bucket;
-
-      -- compare copies present in old and new row for each archive type
-      FOR copies IN
-        select coalesce(o.key, n.key) as archive, o.value->>'status' as old_status, n.value->>'status' as new_status
-            from jsonb_each(old_row.copies) o full outer join lateral jsonb_each(new_row.copies) n on o.key = n.key
-      LOOP
-        -- the count didn't change
-        CONTINUE WHEN copies.old_status is not distinct from copies.new_status OR
-                      (copies.old_status != 'present' AND copies.new_status != 'present');
-
-        update content_archive_counts cac
-            set count = count + (case when copies.old_status = 'present' then -1 else 1 end)
-            where archive = copies.archive and bucket = content_bucket;
-      END LOOP;
-      return null;
-    END;
-$$;
-
-
---
--- Name: update_num_present(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION update_num_present() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-    BEGIN
-    NEW.num_present := (select count(*) from jsonb_each(NEW.copies) where value->>'status' = 'present');
-    RETURN new;
-    END;
+    return;
+  end
 $$;
 
 
@@ -399,7 +176,8 @@ SET default_with_oids = false;
 --
 
 CREATE TABLE archive (
-    id text NOT NULL
+    id bigint NOT NULL,
+    name text NOT NULL
 );
 
 
@@ -407,92 +185,123 @@ CREATE TABLE archive (
 -- Name: TABLE archive; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE archive IS 'Possible archives';
+COMMENT ON TABLE archive IS 'The archives in which contents are stored';
 
 
 --
 -- Name: COLUMN archive.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN archive.id IS 'Short identifier for the archive';
+COMMENT ON COLUMN archive.id IS 'Short identifier for archives';
 
 
 --
--- Name: content_archive; Type: TABLE; Schema: public; Owner: -
+-- Name: COLUMN archive.name; Type: COMMENT; Schema: public; Owner: -
 --
 
-CREATE TABLE content_archive (
-    content_id sha1 NOT NULL,
-    copies jsonb,
-    num_present integer
+COMMENT ON COLUMN archive.name IS 'Name of the archive';
+
+
+--
+-- Name: archive_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE archive_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: archive_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE archive_id_seq OWNED BY archive.id;
+
+
+--
+-- Name: content; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content (
+    id bigint NOT NULL,
+    sha1 sha1 NOT NULL
 );
 
 
 --
--- Name: TABLE content_archive; Type: COMMENT; Schema: public; Owner: -
+-- Name: TABLE content; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE content_archive IS 'Referencing the status and whereabouts of a content';
-
-
---
--- Name: COLUMN content_archive.content_id; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_archive.content_id IS 'content identifier';
+COMMENT ON TABLE content IS 'All the contents being archived by Software Heritage';
 
 
 --
--- Name: COLUMN content_archive.copies; Type: COMMENT; Schema: public; Owner: -
+-- Name: COLUMN content.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_archive.copies IS 'map archive_id -> { "status": archive_status, "mtime": epoch timestamp }';
-
-
---
--- Name: COLUMN content_archive.num_present; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_archive.num_present IS 'Number of copies marked as present (cache updated via trigger)';
+COMMENT ON COLUMN content.id IS 'Short id for the content being archived';
 
 
 --
--- Name: content_archive_counts; Type: TABLE; Schema: public; Owner: -
+-- Name: COLUMN content.sha1; Type: COMMENT; Schema: public; Owner: -
 --
 
-CREATE TABLE content_archive_counts (
-    archive text NOT NULL,
-    bucket bucket NOT NULL,
-    count bigint
+COMMENT ON COLUMN content.sha1 IS 'SHA1 hash of the content being archived';
+
+
+--
+-- Name: content_copies; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE content_copies (
+    content_id bigint NOT NULL,
+    archive_id bigint NOT NULL,
+    mtime timestamp with time zone,
+    status archive_status NOT NULL
 );
 
 
 --
--- Name: TABLE content_archive_counts; Type: COMMENT; Schema: public; Owner: -
+-- Name: TABLE content_copies; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE content_archive_counts IS 'Bucketed count of archive contents';
-
-
---
--- Name: COLUMN content_archive_counts.archive; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN content_archive_counts.archive IS 'the archive for which we''re counting';
+COMMENT ON TABLE content_copies IS 'Tracking of all content copies in the archives';
 
 
 --
--- Name: COLUMN content_archive_counts.bucket; Type: COMMENT; Schema: public; Owner: -
+-- Name: COLUMN content_copies.mtime; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_archive_counts.bucket IS 'the bucket of items we''re counting';
+COMMENT ON COLUMN content_copies.mtime IS 'Last update time of the copy';
 
 
 --
--- Name: COLUMN content_archive_counts.count; Type: COMMENT; Schema: public; Owner: -
+-- Name: COLUMN content_copies.status; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_archive_counts.count IS 'the number of items counted in the given bucket';
+COMMENT ON COLUMN content_copies.status IS 'Status of the copy';
+
+
+--
+-- Name: content_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE content_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: content_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE content_id_seq OWNED BY content.id;
 
 
 --
@@ -514,30 +323,58 @@ COMMENT ON TABLE dbversion IS 'Schema update tracking';
 
 
 --
+-- Name: archive id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY archive ALTER COLUMN id SET DEFAULT nextval('archive_id_seq'::regclass);
+
+
+--
+-- Name: content id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY content ALTER COLUMN id SET DEFAULT nextval('content_id_seq'::regclass);
+
+
+--
 -- Data for Name: archive; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY archive (id) FROM stdin;
-uffizi
-banco
-azure
+COPY archive (id, name) FROM stdin;
+1	uffizi
+2	banco
+3	azure
 \.
 
 
 --
--- Data for Name: content_archive; Type: TABLE DATA; Schema: public; Owner: -
+-- Name: archive_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-COPY content_archive (content_id, copies, num_present) FROM stdin;
+SELECT pg_catalog.setval('archive_id_seq', 3, true);
+
+
+--
+-- Data for Name: content; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY content (id, sha1) FROM stdin;
 \.
 
 
 --
--- Data for Name: content_archive_counts; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: content_copies; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_archive_counts (archive, bucket, count) FROM stdin;
+COPY content_copies (content_id, archive_id, mtime, status) FROM stdin;
 \.
+
+
+--
+-- Name: content_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('content_id_seq', 1, false);
 
 
 --
@@ -545,7 +382,7 @@ COPY content_archive_counts (archive, bucket, count) FROM stdin;
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-9	2017-03-16 16:01:08.497303+01	Work In Progress
+10	2017-06-12 17:45:07.125327+02	Work In Progress
 \.
 
 
@@ -558,19 +395,19 @@ ALTER TABLE ONLY archive
 
 
 --
--- Name: content_archive_counts content_archive_counts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: content_copies content_copies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_archive_counts
-    ADD CONSTRAINT content_archive_counts_pkey PRIMARY KEY (archive, bucket);
+ALTER TABLE ONLY content_copies
+    ADD CONSTRAINT content_copies_pkey PRIMARY KEY (content_id, archive_id);
 
 
 --
--- Name: content_archive content_archive_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: content content_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_archive
-    ADD CONSTRAINT content_archive_pkey PRIMARY KEY (content_id);
+ALTER TABLE ONLY content
+    ADD CONSTRAINT content_pkey PRIMARY KEY (id);
 
 
 --
@@ -582,32 +419,17 @@ ALTER TABLE ONLY dbversion
 
 
 --
--- Name: content_archive_num_present_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: archive_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX content_archive_num_present_idx ON content_archive USING btree (num_present);
-
-
---
--- Name: content_archive update_content_archive_counts; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER update_content_archive_counts AFTER INSERT OR DELETE OR UPDATE ON content_archive FOR EACH ROW EXECUTE PROCEDURE update_content_archive_counts();
+CREATE UNIQUE INDEX archive_name_idx ON archive USING btree (name);
 
 
 --
--- Name: content_archive update_num_present; Type: TRIGGER; Schema: public; Owner: -
+-- Name: content_sha1_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE TRIGGER update_num_present BEFORE INSERT OR UPDATE OF copies ON content_archive FOR EACH ROW EXECUTE PROCEDURE update_num_present();
-
-
---
--- Name: content_archive_counts content_archive_counts_archive_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY content_archive_counts
-    ADD CONSTRAINT content_archive_counts_archive_fkey FOREIGN KEY (archive) REFERENCES archive(id);
+CREATE UNIQUE INDEX content_sha1_idx ON content USING btree (sha1);
 
 
 --
