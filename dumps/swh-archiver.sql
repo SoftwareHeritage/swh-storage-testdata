@@ -28,41 +28,6 @@ CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
 COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
 
 
---
--- Name: plpython3u; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: -
---
-
-CREATE OR REPLACE PROCEDURAL LANGUAGE plpython3u;
-
-
---
--- Name: btree_gist; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
-
-
---
--- Name: EXTENSION btree_gist; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION btree_gist IS 'support for indexing common datatypes in GiST';
-
-
---
--- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
-
-
---
--- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
-
-
 SET search_path = public, pg_catalog;
 
 --
@@ -98,24 +63,6 @@ CREATE DOMAIN bucket AS bytea
 
 CREATE DOMAIN sha1 AS bytea
 	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
-
-
---
--- Name: hash_sha1(text); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION hash_sha1(text) RETURNS text
-    LANGUAGE sql IMMUTABLE STRICT
-    AS $_$
-   select encode(digest($1, 'sha1'), 'hex')
-$_$;
-
-
---
--- Name: FUNCTION hash_sha1(text); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION hash_sha1(text) IS 'Compute sha1 hash as text';
 
 
 --
@@ -382,7 +329,7 @@ SELECT pg_catalog.setval('content_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-10	2017-06-12 17:45:07.125327+02	Work In Progress
+10	2017-07-17 19:01:44.973598+02	Work In Progress
 \.
 
 
