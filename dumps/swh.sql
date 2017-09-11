@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.3
--- Dumped by pg_dump version 9.6.3
+-- Dumped from database version 9.6.5
+-- Dumped by pg_dump version 9.6.5
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -976,6 +976,20 @@ CREATE TYPE revision_entry AS (
 
 
 --
+-- Name: revision_metadata_signature; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE revision_metadata_signature AS (
+	id sha1_git,
+	translated_metadata jsonb,
+	tool_id integer,
+	tool_name text,
+	tool_version text,
+	tool_configuration jsonb
+);
+
+
+--
 -- Name: hash_sha1(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1610,8 +1624,8 @@ CREATE FUNCTION swh_content_language_add(conflict_update boolean) RETURNS void
     AS $$
 begin
     if conflict_update then
-        insert into content_language (id, lang, indexer_configuration_id)
-        select id, lang, indexer_configuration_id
+      insert into content_language (id, lang, indexer_configuration_id)
+      select id, lang, indexer_configuration_id
     	from tmp_content_language tcl
             on conflict(id, indexer_configuration_id)
                 do update set lang = excluded.lang;
@@ -1619,7 +1633,7 @@ begin
     else
         insert into content_language (id, lang, indexer_configuration_id)
         select id, lang, indexer_configuration_id
-    	from tmp_content_language tcl
+    	  from tmp_content_language tcl
             on conflict(id, indexer_configuration_id)
             do nothing;
     end if;
@@ -1707,8 +1721,8 @@ CREATE FUNCTION swh_content_metadata_add(conflict_update boolean) RETURNS void
     AS $$
 begin
     if conflict_update then
-        insert into content_metadata (id, translated_metadata, indexer_configuration_id)
-        select id, translated_metadata, indexer_configuration_id
+      insert into content_metadata (id, translated_metadata, indexer_configuration_id)
+      select id, translated_metadata, indexer_configuration_id
     	from tmp_content_metadata tcm
             on conflict(id, indexer_configuration_id)
                 do update set translated_metadata = excluded.translated_metadata;
@@ -2559,6 +2573,47 @@ $$;
 
 
 --
+-- Name: swh_mktemp_revision_metadata(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_revision_metadata() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_revision_metadata (
+    like revision_metadata including defaults
+  ) on commit drop;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_revision_metadata(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_revision_metadata() IS 'Helper table to add revision metadata';
+
+
+--
+-- Name: swh_mktemp_revision_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_revision_metadata_missing() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_revision_metadata_missing (
+    id sha1_git,
+    indexer_configuration_id integer
+  ) on commit drop;
+$$;
+
+
+--
+-- Name: FUNCTION swh_mktemp_revision_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_mktemp_revision_metadata_missing() IS 'Helper table to filter missing metadata in revision_metadata';
+
+
+--
 -- Name: swh_object_find_by_sha1_git(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -3097,6 +3152,90 @@ $$;
 
 
 --
+-- Name: swh_revision_metadata_add(boolean); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_metadata_add(conflict_update boolean) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+begin
+    if conflict_update then
+      insert into revision_metadata (id, translated_metadata, indexer_configuration_id)
+      select id, translated_metadata, indexer_configuration_id
+    	from tmp_revision_metadata tcm
+            on conflict(id, indexer_configuration_id)
+                do update set translated_metadata = excluded.translated_metadata;
+
+    else
+        insert into revision_metadata (id, translated_metadata, indexer_configuration_id)
+        select id, translated_metadata, indexer_configuration_id
+    	from tmp_revision_metadata tcm
+            on conflict(id, indexer_configuration_id)
+            do nothing;
+    end if;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_revision_metadata_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_revision_metadata_add(conflict_update boolean) IS 'Add new revision metadata';
+
+
+--
+-- Name: swh_revision_metadata_get(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_metadata_get() RETURNS SETOF revision_metadata_signature
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+        select c.id, translated_metadata, i.id as tool_id, tool_name, tool_version, tool_configuration
+        from tmp_bytea t
+        inner join revision_metadata c on c.id = t.id
+        inner join indexer_configuration i on i.id=c.indexer_configuration_id;
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_revision_metadata_get(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_revision_metadata_get() IS 'List revision''s metadata';
+
+
+--
+-- Name: swh_revision_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_revision_metadata_missing() RETURNS SETOF sha1
+    LANGUAGE plpgsql
+    AS $$
+begin
+    return query
+	select id::sha1 from tmp_revision_metadata_missing as tmp
+	where not exists
+	    (select 1 from revision_metadata as c
+             where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id);
+    return;
+end
+$$;
+
+
+--
+-- Name: FUNCTION swh_revision_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION swh_revision_metadata_missing() IS 'Filter missing content metadata';
+
+
+--
 -- Name: swh_revision_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -3183,26 +3322,49 @@ $$;
 CREATE FUNCTION swh_stat_counters() RETURNS SETOF counter
     LANGUAGE sql STABLE
     AS $$
-    select relname::text as label, n_live_tup::bigint - n_dead_tup::bigint as value
-    from pg_stat_user_tables
-    where relid in (
-        'public.content'::regclass,
-        'public.directory'::regclass,
-        'public.directory_entry_dir'::regclass,
-        'public.directory_entry_file'::regclass,
-        'public.directory_entry_rev'::regclass,
-        'public.occurrence'::regclass,
-        'public.occurrence_history'::regclass,
-        'public.origin'::regclass,
-        'public.person'::regclass,
-        'public.entity'::regclass,
-        'public.entity_history'::regclass,
-        'public.release'::regclass,
-        'public.revision'::regclass,
-        'public.revision_history'::regclass,
-        'public.skipped_content'::regclass
+    select object_type as label, value as value
+    from object_counts
+    where object_type in (
+        'content',
+        'directory',
+        'directory_entry_dir',
+        'directory_entry_file',
+        'directory_entry_rev',
+        'occurrence',
+        'occurrence_history',
+        'origin',
+        'origin_visit',
+        'person',
+        'entity',
+        'entity_history',
+        'release',
+        'revision',
+        'revision_history',
+        'skipped_content'
     );
 $$;
+
+
+--
+-- Name: swh_update_counter(text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_update_counter(object_type text) RETURNS void
+    LANGUAGE plpgsql
+    AS $_$
+begin
+    execute format('
+	insert into object_counts
+    (value, last_update, object_type)
+  values
+    ((select count(*) from %1$I), NOW(), %1$L)
+  on conflict (object_type) do update set
+    value = excluded.value,
+    last_update = excluded.last_update',
+  object_type);
+    return;
+end;
+$_$;
 
 
 --
@@ -3974,6 +4136,17 @@ CREATE TABLE listable_entity (
 
 
 --
+-- Name: object_counts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE object_counts (
+    object_type text NOT NULL,
+    value bigint,
+    last_update timestamp with time zone
+);
+
+
+--
 -- Name: occurrence_history_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -4125,6 +4298,45 @@ CREATE TABLE revision_history (
     parent_id sha1_git,
     parent_rank integer DEFAULT 0 NOT NULL
 );
+
+
+--
+-- Name: revision_metadata; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE revision_metadata (
+    id sha1_git NOT NULL,
+    translated_metadata jsonb NOT NULL,
+    indexer_configuration_id bigint NOT NULL
+);
+
+
+--
+-- Name: TABLE revision_metadata; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE revision_metadata IS 'metadata semantically detected and translated in a revision';
+
+
+--
+-- Name: COLUMN revision_metadata.id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN revision_metadata.id IS 'sha1_git of revision';
+
+
+--
+-- Name: COLUMN revision_metadata.translated_metadata; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN revision_metadata.translated_metadata IS 'result of detection and translation with defined format';
+
+
+--
+-- Name: COLUMN revision_metadata.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN revision_metadata.indexer_configuration_id IS 'tool used for detection';
 
 
 --
@@ -4393,7 +4605,7 @@ SELECT pg_catalog.setval('content_object_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-107	2017-07-17 19:01:44.361638+02	Work In Progress
+109	2017-09-11 14:09:42.304682+02	Work In Progress
 \.
 
 
@@ -4462,17 +4674,17 @@ SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2017-07-17 19:01:44.509569+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2017-07-17 19:01:44.509569+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2017-09-11 14:09:42.784247+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2017-09-11 14:09:42.784247+02	11
 \.
 
 
@@ -4489,17 +4701,17 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2017-07-17 19:01:44.509569+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2017-09-11 14:09:42.784247+02"}
 \.
 
 
@@ -5368,6 +5580,7 @@ COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FRO
 4	pygments	2.0.1+dfsg-1.1+deb8u1	{"type": "library", "debian-package": "python3-pygments"}
 5	pygments	2.0.1+dfsg-1.1+deb8u1	{"type": "library", "debian-package": "python3-pygments", "max_content_size": 10240}
 6	swh-metadata-translator	0.0.1	{"type": "local", "context": "npm"}
+7	swh-metadata-detector	0.0.1	{"type": "local", "context": ["npm", "codemeta"]}
 \.
 
 
@@ -5375,7 +5588,7 @@ COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FRO
 -- Name: indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('indexer_configuration_id_seq', 6, true);
+SELECT pg_catalog.setval('indexer_configuration_id_seq', 7, true);
 
 
 --
@@ -5399,6 +5612,14 @@ SELECT pg_catalog.setval('list_history_id_seq', 1, false);
 
 COPY listable_entity (uuid, enabled, list_engine, list_url, list_params, latest_list) FROM stdin;
 34bd6b1b-463f-43e5-a697-785107f598e4	t	swh.lister.github	\N	\N	\N
+\.
+
+
+--
+-- Data for Name: object_counts; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY object_counts (object_type, value, last_update) FROM stdin;
 \.
 
 
@@ -5491,6 +5712,14 @@ COPY revision (id, date, date_offset, committer_date, committer_date_offset, typ
 --
 
 COPY revision_history (id, parent_id, parent_rank) FROM stdin;
+\.
+
+
+--
+-- Data for Name: revision_metadata; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY revision_metadata (id, translated_metadata, indexer_configuration_id) FROM stdin;
 \.
 
 
@@ -5685,6 +5914,14 @@ ALTER TABLE ONLY listable_entity
 
 
 --
+-- Name: object_counts object_counts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY object_counts
+    ADD CONSTRAINT object_counts_pkey PRIMARY KEY (object_type);
+
+
+--
 -- Name: occurrence_history occurrence_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5738,6 +5975,14 @@ ALTER TABLE ONLY release
 
 ALTER TABLE ONLY revision_history
     ADD CONSTRAINT revision_history_pkey PRIMARY KEY (id, parent_rank);
+
+
+--
+-- Name: revision_metadata revision_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY revision_metadata
+    ADD CONSTRAINT revision_metadata_pkey PRIMARY KEY (id, indexer_configuration_id);
 
 
 --
@@ -6338,6 +6583,22 @@ ALTER TABLE ONLY revision
 
 ALTER TABLE ONLY revision_history
     ADD CONSTRAINT revision_history_id_fkey FOREIGN KEY (id) REFERENCES revision(id);
+
+
+--
+-- Name: revision_metadata revision_metadata_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY revision_metadata
+    ADD CONSTRAINT revision_metadata_id_fkey FOREIGN KEY (id) REFERENCES revision(id);
+
+
+--
+-- Name: revision_metadata revision_metadata_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY revision_metadata
+    ADD CONSTRAINT revision_metadata_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
 
 
 --

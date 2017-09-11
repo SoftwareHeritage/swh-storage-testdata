@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.3
--- Dumped by pg_dump version 9.6.3
+-- Dumped from database version 9.6.5
+-- Dumped by pg_dump version 9.6.5
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -329,7 +329,7 @@ SELECT pg_catalog.setval('content_id_seq', 1, false);
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-10	2017-07-17 19:01:44.973598+02	Work In Progress
+10	2017-09-11 14:09:43.341364+02	Work In Progress
 \.
 
 

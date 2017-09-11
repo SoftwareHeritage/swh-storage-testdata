@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.3
--- Dumped by pg_dump version 9.6.3
+-- Dumped from database version 9.6.5
+-- Dumped by pg_dump version 9.6.5
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -31,6 +31,23 @@ COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
 SET search_path = public, pg_catalog;
 
 --
+-- Name: task_policy; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE task_policy AS ENUM (
+    'recurring',
+    'oneshot'
+);
+
+
+--
+-- Name: TYPE task_policy; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TYPE task_policy IS 'Recurrence policy of the given task';
+
+
+--
 -- Name: task_run_status; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -40,6 +57,7 @@ CREATE TYPE task_run_status AS ENUM (
     'eventful',
     'uneventful',
     'failed',
+    'permfailed',
     'lost'
 );
 
@@ -58,6 +76,7 @@ COMMENT ON TYPE task_run_status IS 'Status of a given task run';
 CREATE TYPE task_status AS ENUM (
     'next_run_not_scheduled',
     'next_run_scheduled',
+    'completed',
     'disabled'
 );
 
@@ -67,39 +86,6 @@ CREATE TYPE task_status AS ENUM (
 --
 
 COMMENT ON TYPE task_status IS 'Status of a given task';
-
-
---
--- Name: swh_scheduler_compute_new_task_interval(text, interval, task_run_status); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_scheduler_compute_new_task_interval(task_type text, current_interval interval, end_status task_run_status) RETURNS interval
-    LANGUAGE plpgsql STABLE
-    AS $$
-declare
-  task_type_row task_type%rowtype;
-  adjustment_factor float;
-begin
-  select *
-    from task_type
-    where type = swh_scheduler_compute_new_task_interval.task_type
-  into task_type_row;
-
-  case end_status
-  when 'eventful' then
-    adjustment_factor := 1/task_type_row.backoff_factor;
-  when 'uneventful' then
-    adjustment_factor := task_type_row.backoff_factor;
-  else
-    -- failed or lost task: no backoff.
-    adjustment_factor := 1;
-  end case;
-
-  return greatest(task_type_row.min_interval,
-                  least(task_type_row.max_interval,
-                        adjustment_factor * current_interval));
-end;
-$$;
 
 
 SET default_tablespace = '';
@@ -115,8 +101,11 @@ CREATE TABLE task (
     type text NOT NULL,
     arguments jsonb NOT NULL,
     next_run timestamp with time zone NOT NULL,
-    current_interval interval NOT NULL,
-    status task_status NOT NULL
+    current_interval interval,
+    status task_status NOT NULL,
+    policy task_policy DEFAULT 'recurring'::task_policy NOT NULL,
+    retries_left bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT task_check CHECK (((policy <> 'recurring'::task_policy) OR (current_interval IS NOT NULL)))
 );
 
 
@@ -149,6 +138,20 @@ COMMENT ON COLUMN task.current_interval IS 'The interval between two runs of thi
 
 
 --
+-- Name: COLUMN task.policy; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN task.policy IS 'Whether the task is one-shot or recurring';
+
+
+--
+-- Name: COLUMN task.retries_left; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN task.retries_left IS 'The number of "short delay" retries of the task in case of transient failure';
+
+
+--
 -- Name: swh_scheduler_create_tasks_from_temp(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -157,9 +160,11 @@ CREATE FUNCTION swh_scheduler_create_tasks_from_temp() RETURNS SETOF task
     AS $$
 begin
   return query
-  insert into task (type, arguments, next_run, status, current_interval)
+  insert into task (type, arguments, next_run, status, current_interval, policy, retries_left)
     select type, arguments, next_run, 'next_run_not_scheduled',
-           (select default_interval from task_type tt where tt.type = tmp_task.type)
+           (select default_interval from task_type tt where tt.type = tmp_task.type),
+           coalesce(policy, 'recurring'),
+           coalesce(retries_left, (select num_retries from task_type tt where tt.type = tmp_task.type), 0)
       from tmp_task
   returning task.*;
 end;
@@ -262,7 +267,9 @@ CREATE FUNCTION swh_scheduler_mktemp_task() RETURNS void
   alter table tmp_task
     drop column id,
     drop column current_interval,
-    drop column status;
+    drop column status,
+    alter column policy drop not null,
+    alter column retries_left drop not null;
 $$;
 
 
@@ -358,18 +365,72 @@ $$;
 
 
 --
--- Name: swh_scheduler_update_task_interval(); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_scheduler_update_task_on_task_end(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_scheduler_update_task_interval() RETURNS trigger
+CREATE FUNCTION swh_scheduler_update_task_on_task_end() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
+declare
+  cur_task task%rowtype;
+  cur_task_type task_type%rowtype;
+  adjustment_factor float;
+  new_interval interval;
 begin
-  update task
-    set status = 'next_run_not_scheduled',
-        current_interval = swh_scheduler_compute_new_task_interval(type, current_interval, new.status),
-        next_run = now () + swh_scheduler_compute_new_task_interval(type, current_interval, new.status)
-    where id = new.task;
+  select * from task where id = new.task into cur_task;
+  select * from task_type where type = cur_task.type into cur_task_type;
+
+  case
+    when new.status = 'permfailed' then
+      update task
+        set status = 'disabled'
+        where id = cur_task.id;
+    when new.status in ('eventful', 'uneventful') then
+      case
+        when cur_task.policy = 'oneshot' then
+          update task
+            set status = 'completed'
+            where id = cur_task.id;
+        when cur_task.policy = 'recurring' then
+          if new.status = 'uneventful' then
+            adjustment_factor := 1/cur_task_type.backoff_factor;
+          else
+            adjustment_factor := 1/cur_task_type.backoff_factor;
+          end if;
+          new_interval := greatest(
+            cur_task_type.min_interval,
+            least(
+              cur_task_type.max_interval,
+              adjustment_factor * cur_task.current_interval));
+          update task
+            set status = 'next_run_not_scheduled',
+                next_run = now() + new_interval,
+                current_interval = new_interval,
+                retries_left = coalesce(cur_task_type.num_retries, 0)
+            where id = cur_task.id;
+      end case;
+    else -- new.status in 'failed', 'lost'
+      if cur_task.retries_left > 0 then
+        update task
+          set status = 'next_run_not_scheduled',
+              next_run = now() + cur_task_type.retry_delay,
+              retries_left = cur_task.retries_left - 1
+          where id = cur_task.id;
+      else -- no retries left
+        case
+          when cur_task.policy = 'oneshot' then
+            update task
+              set status = 'disabled'
+              where id = cur_task.id;
+          when cur_task.policy = 'recurring' then
+            update task
+              set status = 'next_run_not_scheduled',
+                  next_run = now() + cur_task.current_interval,
+                  retries_left = coalesce(cur_task_type.num_retries, 0)
+              where id = cur_task.id;
+        end case;
+      end if; -- retries
+  end case;
   return null;
 end;
 $$;
@@ -439,11 +500,13 @@ CREATE TABLE task_type (
     type text NOT NULL,
     description text NOT NULL,
     backend_name text NOT NULL,
-    default_interval interval NOT NULL,
-    min_interval interval NOT NULL,
-    max_interval interval NOT NULL,
-    backoff_factor double precision NOT NULL,
-    queue_max_length bigint
+    default_interval interval,
+    min_interval interval,
+    max_interval interval,
+    backoff_factor double precision,
+    max_queue_length bigint,
+    num_retries bigint,
+    retry_delay interval
 );
 
 
@@ -504,10 +567,24 @@ COMMENT ON COLUMN task_type.backoff_factor IS 'Adjustment factor for the backoff
 
 
 --
--- Name: COLUMN task_type.queue_max_length; Type: COMMENT; Schema: public; Owner: -
+-- Name: COLUMN task_type.max_queue_length; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN task_type.queue_max_length IS 'Maximum length of the queue for this type of tasks';
+COMMENT ON COLUMN task_type.max_queue_length IS 'Maximum length of the queue for this type of tasks';
+
+
+--
+-- Name: COLUMN task_type.num_retries; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN task_type.num_retries IS 'Default number of retries on transient failures';
+
+
+--
+-- Name: COLUMN task_type.retry_delay; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN task_type.retry_delay IS 'Retry delay for the task';
 
 
 --
@@ -529,7 +606,7 @@ ALTER TABLE ONLY task_run ALTER COLUMN id SET DEFAULT nextval('task_run_id_seq':
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-4	2017-07-17 19:01:45.437641+02	Work In Progress
+6	2017-09-11 14:09:43.889292+02	Work In Progress
 \.
 
 
@@ -537,7 +614,7 @@ COPY dbversion (version, release, description) FROM stdin;
 -- Data for Name: task; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY task (id, type, arguments, next_run, current_interval, status) FROM stdin;
+COPY task (id, type, arguments, next_run, current_interval, status, policy, retries_left) FROM stdin;
 \.
 
 
@@ -567,7 +644,7 @@ SELECT pg_catalog.setval('task_run_id_seq', 1, false);
 -- Data for Name: task_type; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY task_type (type, description, backend_name, default_interval, min_interval, max_interval, backoff_factor, queue_max_length) FROM stdin;
+COPY task_type (type, description, backend_name, default_interval, min_interval, max_interval, backoff_factor, max_queue_length, num_retries, retry_delay) FROM stdin;
 \.
 
 
@@ -646,10 +723,10 @@ CREATE INDEX task_type_idx ON task USING btree (type);
 
 
 --
--- Name: task_run update_interval_on_task_end; Type: TRIGGER; Schema: public; Owner: -
+-- Name: task_run update_task_on_task_end; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER update_interval_on_task_end AFTER UPDATE OF status ON task_run FOR EACH ROW WHEN ((new.status = ANY (ARRAY['eventful'::task_run_status, 'uneventful'::task_run_status, 'failed'::task_run_status, 'lost'::task_run_status]))) EXECUTE PROCEDURE swh_scheduler_update_task_interval();
+CREATE TRIGGER update_task_on_task_end AFTER UPDATE OF status ON task_run FOR EACH ROW WHEN ((new.status <> ALL (ARRAY['scheduled'::task_run_status, 'started'::task_run_status]))) EXECUTE PROCEDURE swh_scheduler_update_task_on_task_end();
 
 
 --
