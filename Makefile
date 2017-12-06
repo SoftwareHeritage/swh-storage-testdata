@@ -1,4 +1,4 @@
-BASES = swh swh-archiver swh-scheduler
+BASES = swh swh-archiver swh-scheduler swh-indexer
 EXTS = dump sql
 DUMPS = $(foreach ext,$(EXTS),$(foreach base,$(BASES), dumps/$(base).$(ext)))
 
