@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.5
--- Dumped by pg_dump version 9.6.5
+-- Dumped from database version 9.6.4
+-- Dumped by pg_dump version 9.6.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -606,7 +606,7 @@ ALTER TABLE ONLY task_run ALTER COLUMN id SET DEFAULT nextval('task_run_id_seq':
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-6	2017-09-11 14:09:43.889292+02	Work In Progress
+6	2017-12-07 00:16:55.264123+01	Work In Progress
 \.
 
 
