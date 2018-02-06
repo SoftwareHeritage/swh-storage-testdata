@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.4
--- Dumped by pg_dump version 9.6.4
+-- Dumped from database version 10.1 (Debian 10.1-3)
+-- Dumped by pg_dump version 10.1 (Debian 10.1-3)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -295,13 +295,6 @@ COPY archive (id, name) FROM stdin;
 
 
 --
--- Name: archive_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('archive_id_seq', 3, true);
-
-
---
 -- Data for Name: content; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -318,19 +311,26 @@ COPY content_copies (content_id, archive_id, mtime, status) FROM stdin;
 
 
 --
--- Name: content_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('content_id_seq', 1, false);
-
-
---
 -- Data for Name: dbversion; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-10	2017-12-07 00:16:54.825261+01	Work In Progress
+10	2018-02-06 14:11:20.640961+01	Work In Progress
 \.
+
+
+--
+-- Name: archive_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('archive_id_seq', 3, true);
+
+
+--
+-- Name: content_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('content_id_seq', 1, false);
 
 
 --

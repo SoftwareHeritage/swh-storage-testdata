@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.4
--- Dumped by pg_dump version 9.6.4
+-- Dumped from database version 10.1 (Debian 10.1-3)
+-- Dumped by pg_dump version 10.1 (Debian 10.1-3)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -606,7 +606,7 @@ ALTER TABLE ONLY task_run ALTER COLUMN id SET DEFAULT nextval('task_run_id_seq':
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-6	2017-12-07 00:16:55.264123+01	Work In Progress
+6	2018-02-06 14:11:21.11453+01	Work In Progress
 \.
 
 
@@ -619,13 +619,6 @@ COPY task (id, type, arguments, next_run, current_interval, status, policy, retr
 
 
 --
--- Name: task_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('task_id_seq', 1, false);
-
-
---
 -- Data for Name: task_run; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -634,18 +627,29 @@ COPY task_run (id, task, backend_id, scheduled, started, ended, metadata, status
 
 
 --
--- Name: task_run_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('task_run_id_seq', 1, false);
-
-
---
 -- Data for Name: task_type; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY task_type (type, description, backend_name, default_interval, min_interval, max_interval, backoff_factor, max_queue_length, num_retries, retry_delay) FROM stdin;
+swh-loader-mount-dump-and-load-svn-repository	Loading svn repositories from svn dump	swh.loader.svn.tasks.MountAndLoadSvnRepositoryTsk	1 day	1 day	1 day	1	1000	\N	\N
+swh-deposit-archive-loading	Loading deposit archive into swh through swh-loader-tar	swh.deposit.loader.tasks.LoadDepositArchiveTsk	1 day	1 day	1 day	1	1000	\N	\N
+swh-deposit-archive-checks	Loading deposit archive into swh through swh-loader-tar	swh.deposit.loader.tasks.ChecksDepositTsk	1 day	1 day	1 day	1	1000	\N	\N
+swh-vault-cooking	Cook a Vault bundle	swh.vault.cooking_tasks.SWHCookingTask	1 day	1 day	1 day	1	10000	\N	\N
 \.
+
+
+--
+-- Name: task_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('task_id_seq', 1, false);
+
+
+--
+-- Name: task_run_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('task_run_id_seq', 1, false);
 
 
 --

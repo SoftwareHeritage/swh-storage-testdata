@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.4
--- Dumped by pg_dump version 9.6.4
+-- Dumped from database version 10.1 (Debian 10.1-3)
+-- Dumped by pg_dump version 10.1 (Debian 10.1-3)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1666,6 +1666,7 @@ COMMENT ON COLUMN content_fossology_license.indexer_configuration_id IS 'Tool us
 --
 
 CREATE SEQUENCE content_fossology_license_license_id_seq
+    AS smallint
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1838,6 +1839,7 @@ COMMENT ON COLUMN fossology_license.name IS 'License name';
 --
 
 CREATE SEQUENCE fossology_license_id_seq
+    AS smallint
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1857,6 +1859,7 @@ ALTER SEQUENCE fossology_license_id_seq OWNED BY fossology_license.id;
 --
 
 CREATE SEQUENCE indexer_configuration_id_seq
+    AS integer
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2013,13 +2016,6 @@ COPY content_fossology_license (id, license_id, indexer_configuration_id) FROM s
 
 
 --
--- Name: content_fossology_license_license_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('content_fossology_license_license_id_seq', 1, false);
-
-
---
 -- Data for Name: content_language; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -2048,7 +2044,7 @@ COPY content_mimetype (id, mimetype, encoding, indexer_configuration_id) FROM st
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-114	2017-12-07 00:16:55.75665+01	Work In Progress
+114	2018-02-06 14:11:21.710655+01	Work In Progress
 \.
 
 
@@ -2058,13 +2054,6 @@ COPY dbversion (version, release, description) FROM stdin;
 
 COPY fossology_license (id, name) FROM stdin;
 \.
-
-
---
--- Name: fossology_license_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('fossology_license_id_seq', 1, false);
 
 
 --
@@ -2085,13 +2074,6 @@ COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FRO
 
 
 --
--- Name: indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('indexer_configuration_id_seq', 9, true);
-
-
---
 -- Data for Name: origin_metadata_translation; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -2100,18 +2082,39 @@ COPY origin_metadata_translation (id, result, tool_id) FROM stdin;
 
 
 --
--- Name: origin_metadata_translation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('origin_metadata_translation_id_seq', 1, false);
-
-
---
 -- Data for Name: revision_metadata; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY revision_metadata (id, translated_metadata, indexer_configuration_id) FROM stdin;
 \.
+
+
+--
+-- Name: content_fossology_license_license_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('content_fossology_license_license_id_seq', 1, false);
+
+
+--
+-- Name: fossology_license_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('fossology_license_id_seq', 1, false);
+
+
+--
+-- Name: indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('indexer_configuration_id_seq', 9, true);
+
+
+--
+-- Name: origin_metadata_translation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('origin_metadata_translation_id_seq', 1, false);
 
 
 --

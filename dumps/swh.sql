@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.6.4
--- Dumped by pg_dump version 9.6.4
+-- Dumped from database version 10.1 (Debian 10.1-3)
+-- Dumped by pg_dump version 10.1 (Debian 10.1-3)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -26,13 +26,6 @@ CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
 --
 
 COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
-
-
---
--- Name: plpython3u; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: -
---
-
-CREATE OR REPLACE PROCEDURAL LANGUAGE plpython3u;
 
 
 --
@@ -240,7 +233,8 @@ CREATE TYPE object_type AS ENUM (
     'content',
     'directory',
     'revision',
-    'release'
+    'release',
+    'snapshot'
 );
 
 
@@ -328,7 +322,8 @@ CREATE TYPE revision_type AS ENUM (
     'git',
     'tar',
     'dsc',
-    'svn'
+    'svn',
+    'hg'
 );
 
 
@@ -370,6 +365,39 @@ CREATE TYPE revision_entry AS (
 
 
 --
+-- Name: snapshot_target; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE snapshot_target AS ENUM (
+    'content',
+    'directory',
+    'revision',
+    'release',
+    'snapshot',
+    'alias'
+);
+
+
+--
+-- Name: TYPE snapshot_target; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TYPE snapshot_target IS 'Types of targets for snapshot branches';
+
+
+--
+-- Name: snapshot_result; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE snapshot_result AS (
+	snapshot_id sha1_git,
+	name bytea,
+	target bytea,
+	target_type snapshot_target
+);
+
+
+--
 -- Name: hash_sha1(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -384,7 +412,7 @@ $_$;
 -- Name: FUNCTION hash_sha1(text); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION hash_sha1(text) IS 'Compute sha1 hash as text';
+COMMENT ON FUNCTION hash_sha1(text) IS 'Compute SHA1 hash as text';
 
 
 --
@@ -1128,6 +1156,21 @@ $$;
 
 
 --
+-- Name: swh_mktemp_snapshot_branch(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_mktemp_snapshot_branch() RETURNS void
+    LANGUAGE sql
+    AS $$
+  create temporary table tmp_snapshot_branch (
+      name bytea not null,
+      target bytea,
+      target_type snapshot_target
+  ) on commit drop;
+$$;
+
+
+--
 -- Name: swh_mktemp_tool(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1203,7 +1246,8 @@ CREATE TABLE occurrence_history (
     target sha1_git NOT NULL,
     target_type object_type NOT NULL,
     visits bigint[] NOT NULL,
-    object_id bigint NOT NULL
+    object_id bigint NOT NULL,
+    snapshot_branch_id bigint
 );
 
 
@@ -1772,6 +1816,80 @@ $$;
 
 
 --
+-- Name: swh_snapshot_add(bigint, bigint, sha1_git); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_snapshot_add(origin bigint, visit bigint, snapshot_id sha1_git) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+declare
+  snapshot_object_id snapshot.object_id%type;
+begin
+  select object_id from snapshot where id = snapshot_id into snapshot_object_id;
+  if snapshot_object_id is null then
+     insert into snapshot (id) values (snapshot_id) returning object_id into snapshot_object_id;
+     insert into snapshot_branch (name, target_type, target)
+       select name, target_type, target from tmp_snapshot_branch tmp
+       where not exists (
+         select 1
+         from snapshot_branch sb
+         where sb.name = tmp.name
+           and sb.target = tmp.target
+           and sb.target_type = tmp.target_type
+       )
+       on conflict do nothing;
+     insert into snapshot_branches (snapshot_id, branch_id)
+     select snapshot_object_id, sb.object_id as branch_id
+       from tmp_snapshot_branch tmp
+       join snapshot_branch sb
+       using (name, target, target_type)
+       where tmp.target is not null and tmp.target_type is not null
+     union
+     select snapshot_object_id, sb.object_id as branch_id
+       from tmp_snapshot_branch tmp
+       join snapshot_branch sb
+       using (name)
+       where tmp.target is null and tmp.target_type is null
+         and sb.target is null and sb.target_type is null;
+  end if;
+  update origin_visit ov
+    set snapshot_id = snapshot_object_id
+    where ov.origin=swh_snapshot_add.origin and ov.visit=swh_snapshot_add.visit;
+end;
+$$;
+
+
+--
+-- Name: swh_snapshot_get_by_id(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_snapshot_get_by_id(id sha1_git) RETURNS SETOF snapshot_result
+    LANGUAGE sql STABLE
+    AS $$
+  select
+    swh_snapshot_get_by_id.id as snapshot_id, name, target, target_type
+  from snapshot_branches
+  inner join snapshot_branch on snapshot_branches.branch_id = snapshot_branch.object_id
+  where snapshot_id = (select object_id from snapshot where snapshot.id = swh_snapshot_get_by_id.id)
+$$;
+
+
+--
+-- Name: swh_snapshot_get_by_origin_visit(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION swh_snapshot_get_by_origin_visit(origin_id bigint, visit_id bigint) RETURNS sha1_git
+    LANGUAGE sql STABLE
+    AS $$
+  select snapshot.id
+  from origin_visit
+  left join snapshot
+  on snapshot.object_id = origin_visit.snapshot_id
+  where origin_visit.origin=origin_id and origin_visit.visit=visit_id;
+$$;
+
+
+--
 -- Name: swh_stat_counters(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1927,7 +2045,8 @@ CREATE TABLE origin_visit (
     visit bigint NOT NULL,
     date timestamp with time zone NOT NULL,
     status origin_visit_status NOT NULL,
-    metadata jsonb
+    metadata jsonb,
+    snapshot_id bigint
 );
 
 
@@ -1964,6 +2083,13 @@ COMMENT ON COLUMN origin_visit.status IS 'Visit status for that origin';
 --
 
 COMMENT ON COLUMN origin_visit.metadata IS 'Metadata associated with the visit';
+
+
+--
+-- Name: COLUMN origin_visit.snapshot_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN origin_visit.snapshot_id IS 'id of the snapshot associated with the visit';
 
 
 --
@@ -2334,6 +2460,7 @@ COMMENT ON COLUMN metadata_provider.metadata IS 'Other metadata about provider';
 --
 
 CREATE SEQUENCE metadata_provider_id_seq
+    AS integer
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2652,10 +2779,83 @@ ALTER SEQUENCE skipped_content_object_id_seq OWNED BY skipped_content.object_id;
 
 
 --
+-- Name: snapshot; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE snapshot (
+    object_id bigint NOT NULL,
+    id sha1_git
+);
+
+
+--
+-- Name: snapshot_branch; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE snapshot_branch (
+    object_id bigint NOT NULL,
+    name bytea NOT NULL,
+    target bytea,
+    target_type snapshot_target,
+    CONSTRAINT snapshot_branch_target_check CHECK (((target_type IS NULL) = (target IS NULL))),
+    CONSTRAINT snapshot_target_check CHECK (((target_type <> ALL (ARRAY['content'::snapshot_target, 'directory'::snapshot_target, 'revision'::snapshot_target, 'release'::snapshot_target, 'snapshot'::snapshot_target])) OR (length(target) = 20)))
+);
+
+
+--
+-- Name: snapshot_branch_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE snapshot_branch_object_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: snapshot_branch_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE snapshot_branch_object_id_seq OWNED BY snapshot_branch.object_id;
+
+
+--
+-- Name: snapshot_branches; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE snapshot_branches (
+    snapshot_id bigint NOT NULL,
+    branch_id bigint NOT NULL
+);
+
+
+--
+-- Name: snapshot_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE snapshot_object_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: snapshot_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE snapshot_object_id_seq OWNED BY snapshot.object_id;
+
+
+--
 -- Name: tool_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE tool_id_seq
+    AS integer
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2783,6 +2983,20 @@ ALTER TABLE ONLY skipped_content ALTER COLUMN object_id SET DEFAULT nextval('ski
 
 
 --
+-- Name: snapshot object_id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY snapshot ALTER COLUMN object_id SET DEFAULT nextval('snapshot_object_id_seq'::regclass);
+
+
+--
+-- Name: snapshot_branch object_id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY snapshot_branch ALTER COLUMN object_id SET DEFAULT nextval('snapshot_branch_object_id_seq'::regclass);
+
+
+--
 -- Name: tool id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2798,18 +3012,11 @@ COPY content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, object_
 
 
 --
--- Name: content_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('content_object_id_seq', 1, false);
-
-
---
 -- Data for Name: dbversion; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY dbversion (version, release, description) FROM stdin;
-114	2017-12-07 00:16:54.210207+01	Work In Progress
+117	2018-02-06 14:11:19.960582+01	Work In Progress
 \.
 
 
@@ -2830,25 +3037,11 @@ COPY directory_entry_dir (id, target, name, perms) FROM stdin;
 
 
 --
--- Name: directory_entry_dir_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('directory_entry_dir_id_seq', 1, false);
-
-
---
 -- Data for Name: directory_entry_file; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY directory_entry_file (id, target, name, perms) FROM stdin;
 \.
-
-
---
--- Name: directory_entry_file_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('directory_entry_file_id_seq', 1, false);
 
 
 --
@@ -2860,35 +3053,21 @@ COPY directory_entry_rev (id, target, name, perms) FROM stdin;
 
 
 --
--- Name: directory_entry_rev_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('directory_entry_rev_id_seq', 1, false);
-
-
---
--- Name: directory_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
-
-
---
 -- Data for Name: entity; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2017-12-07 00:16:54.37574+01	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2017-12-07 00:16:54.37574+01	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2018-02-06 14:11:20.150574+01	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	11
 \.
 
 
@@ -2905,25 +3084,18 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2017-12-07 00:16:54.37574+01"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
 \.
-
-
---
--- Name: entity_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('entity_history_id_seq', 11, true);
 
 
 --
@@ -2935,25 +3107,11 @@ COPY fetch_history (id, origin, date, status, result, stdout, stderr, duration) 
 
 
 --
--- Name: fetch_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('fetch_history_id_seq', 1, false);
-
-
---
 -- Data for Name: list_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY list_history (id, date, status, result, stdout, stderr, duration, entity) FROM stdin;
 \.
-
-
---
--- Name: list_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('list_history_id_seq', 1, false);
 
 
 --
@@ -2971,13 +3129,6 @@ COPY listable_entity (uuid, enabled, list_engine, list_url, list_params, latest_
 
 COPY metadata_provider (id, provider_name, provider_type, provider_url, metadata) FROM stdin;
 \.
-
-
---
--- Name: metadata_provider_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('metadata_provider_id_seq', 1, false);
 
 
 --
@@ -3000,15 +3151,8 @@ COPY occurrence (origin, branch, target, target_type) FROM stdin;
 -- Data for Name: occurrence_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY occurrence_history (origin, branch, target, target_type, visits, object_id) FROM stdin;
+COPY occurrence_history (origin, branch, target, target_type, visits, object_id, snapshot_branch_id) FROM stdin;
 \.
-
-
---
--- Name: occurrence_history_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('occurrence_history_object_id_seq', 1, false);
 
 
 --
@@ -3020,13 +3164,6 @@ COPY origin (id, type, url, lister, project) FROM stdin;
 
 
 --
--- Name: origin_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('origin_id_seq', 1, false);
-
-
---
 -- Data for Name: origin_metadata; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -3035,17 +3172,10 @@ COPY origin_metadata (id, origin_id, discovery_date, provider_id, tool_id, metad
 
 
 --
--- Name: origin_metadata_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('origin_metadata_id_seq', 1, false);
-
-
---
 -- Data for Name: origin_visit; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY origin_visit (origin, visit, date, status, metadata) FROM stdin;
+COPY origin_visit (origin, visit, date, status, metadata, snapshot_id) FROM stdin;
 \.
 
 
@@ -3058,25 +3188,11 @@ COPY person (id, name, email, fullname) FROM stdin;
 
 
 --
--- Name: person_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('person_id_seq', 1, false);
-
-
---
 -- Data for Name: release; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY release (id, target, date, date_offset, name, comment, author, synthetic, object_id, target_type, date_neg_utc_offset) FROM stdin;
 \.
-
-
---
--- Name: release_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('release_object_id_seq', 1, false);
 
 
 --
@@ -3096,18 +3212,148 @@ COPY revision_history (id, parent_id, parent_rank) FROM stdin;
 
 
 --
--- Name: revision_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('revision_object_id_seq', 1, false);
-
-
---
 -- Data for Name: skipped_content; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY skipped_content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, reason, origin, object_id) FROM stdin;
 \.
+
+
+--
+-- Data for Name: snapshot; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY snapshot (object_id, id) FROM stdin;
+\.
+
+
+--
+-- Data for Name: snapshot_branch; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY snapshot_branch (object_id, name, target, target_type) FROM stdin;
+\.
+
+
+--
+-- Data for Name: snapshot_branches; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY snapshot_branches (snapshot_id, branch_id) FROM stdin;
+\.
+
+
+--
+-- Data for Name: tool; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY tool (id, name, version, configuration) FROM stdin;
+\.
+
+
+--
+-- Name: content_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('content_object_id_seq', 1, false);
+
+
+--
+-- Name: directory_entry_dir_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('directory_entry_dir_id_seq', 1, false);
+
+
+--
+-- Name: directory_entry_file_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('directory_entry_file_id_seq', 1, false);
+
+
+--
+-- Name: directory_entry_rev_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('directory_entry_rev_id_seq', 1, false);
+
+
+--
+-- Name: directory_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
+
+
+--
+-- Name: entity_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('entity_history_id_seq', 11, true);
+
+
+--
+-- Name: fetch_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('fetch_history_id_seq', 1, false);
+
+
+--
+-- Name: list_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('list_history_id_seq', 1, false);
+
+
+--
+-- Name: metadata_provider_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('metadata_provider_id_seq', 1, false);
+
+
+--
+-- Name: occurrence_history_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('occurrence_history_object_id_seq', 1, false);
+
+
+--
+-- Name: origin_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('origin_id_seq', 1, false);
+
+
+--
+-- Name: origin_metadata_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('origin_metadata_id_seq', 1, false);
+
+
+--
+-- Name: person_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('person_id_seq', 1, false);
+
+
+--
+-- Name: release_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('release_object_id_seq', 1, false);
+
+
+--
+-- Name: revision_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('revision_object_id_seq', 1, false);
 
 
 --
@@ -3118,11 +3364,17 @@ SELECT pg_catalog.setval('skipped_content_object_id_seq', 1, false);
 
 
 --
--- Data for Name: tool; Type: TABLE DATA; Schema: public; Owner: -
+-- Name: snapshot_branch_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-COPY tool (id, name, version, configuration) FROM stdin;
-\.
+SELECT pg_catalog.setval('snapshot_branch_object_id_seq', 1, false);
+
+
+--
+-- Name: snapshot_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('snapshot_object_id_seq', 1, false);
 
 
 --
@@ -3322,6 +3574,30 @@ ALTER TABLE ONLY revision
 
 ALTER TABLE ONLY skipped_content
     ADD CONSTRAINT skipped_content_sha1_sha1_git_sha256_key UNIQUE (sha1, sha1_git, sha256);
+
+
+--
+-- Name: snapshot_branch snapshot_branch_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY snapshot_branch
+    ADD CONSTRAINT snapshot_branch_pkey PRIMARY KEY (object_id);
+
+
+--
+-- Name: snapshot_branches snapshot_branches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY snapshot_branches
+    ADD CONSTRAINT snapshot_branches_pkey PRIMARY KEY (snapshot_id, branch_id);
+
+
+--
+-- Name: snapshot snapshot_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY snapshot
+    ADD CONSTRAINT snapshot_pkey PRIMARY KEY (object_id);
 
 
 --
@@ -3585,6 +3861,27 @@ CREATE INDEX skipped_content_sha256_idx ON skipped_content USING btree (sha256);
 
 
 --
+-- Name: snapshot_branch_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX snapshot_branch_name_idx ON snapshot_branch USING btree (name) WHERE ((target_type IS NULL) AND (target IS NULL));
+
+
+--
+-- Name: snapshot_branch_target_type_target_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX snapshot_branch_target_type_target_name_idx ON snapshot_branch USING btree (target_type, target, name);
+
+
+--
+-- Name: snapshot_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX snapshot_id_idx ON snapshot USING btree (id);
+
+
+--
 -- Name: tool_name_version_configuration_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3768,6 +4065,14 @@ ALTER TABLE ONLY origin_visit
 
 
 --
+-- Name: origin_visit origin_visit_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY origin_visit
+    ADD CONSTRAINT origin_visit_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES snapshot(object_id);
+
+
+--
 -- Name: release release_author_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3805,6 +4110,22 @@ ALTER TABLE ONLY revision_history
 
 ALTER TABLE ONLY skipped_content
     ADD CONSTRAINT skipped_content_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
+
+
+--
+-- Name: snapshot_branches snapshot_branches_branch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY snapshot_branches
+    ADD CONSTRAINT snapshot_branches_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES snapshot_branch(object_id);
+
+
+--
+-- Name: snapshot_branches snapshot_branches_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY snapshot_branches
+    ADD CONSTRAINT snapshot_branches_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES snapshot(object_id);
 
 
 --
