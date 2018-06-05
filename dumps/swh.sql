@@ -2,14 +2,15 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.1 (Debian 10.1-3)
--- Dumped by pg_dump version 10.1 (Debian 10.1-3)
+-- Dumped from database version 10.4 (Debian 10.4-2.pgdg+1)
+-- Dumped by pg_dump version 10.4 (Debian 10.4-2.pgdg+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
@@ -56,13 +57,11 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
-SET search_path = public, pg_catalog;
-
 --
 -- Name: blake2s256; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN blake2s256 AS bytea
+CREATE DOMAIN public.blake2s256 AS bytea
 	CONSTRAINT blake2s256_check CHECK ((length(VALUE) = 32));
 
 
@@ -70,7 +69,7 @@ CREATE DOMAIN blake2s256 AS bytea
 -- Name: sha1_git; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN sha1_git AS bytea
+CREATE DOMAIN public.sha1_git AS bytea
 	CONSTRAINT sha1_git_check CHECK ((length(VALUE) = 20));
 
 
@@ -78,16 +77,16 @@ CREATE DOMAIN sha1_git AS bytea
 -- Name: unix_path; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN unix_path AS bytea;
+CREATE DOMAIN public.unix_path AS bytea;
 
 
 --
 -- Name: content_dir; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE content_dir AS (
-	directory sha1_git,
-	path unix_path
+CREATE TYPE public.content_dir AS (
+	directory public.sha1_git,
+	path public.unix_path
 );
 
 
@@ -95,7 +94,7 @@ CREATE TYPE content_dir AS (
 -- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN sha1 AS bytea
+CREATE DOMAIN public.sha1 AS bytea
 	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
 
 
@@ -103,7 +102,7 @@ CREATE DOMAIN sha1 AS bytea
 -- Name: sha256; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN sha256 AS bytea
+CREATE DOMAIN public.sha256 AS bytea
 	CONSTRAINT sha256_check CHECK ((length(VALUE) = 32));
 
 
@@ -111,11 +110,11 @@ CREATE DOMAIN sha256 AS bytea
 -- Name: content_signature; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE content_signature AS (
-	sha1 sha1,
-	sha1_git sha1_git,
-	sha256 sha256,
-	blake2s256 blake2s256
+CREATE TYPE public.content_signature AS (
+	sha1 public.sha1,
+	sha1_git public.sha1_git,
+	sha256 public.sha256,
+	blake2s256 public.blake2s256
 );
 
 
@@ -123,7 +122,7 @@ CREATE TYPE content_signature AS (
 -- Name: content_status; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE content_status AS ENUM (
+CREATE TYPE public.content_status AS ENUM (
     'absent',
     'visible',
     'hidden'
@@ -134,14 +133,14 @@ CREATE TYPE content_status AS ENUM (
 -- Name: TYPE content_status; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE content_status IS 'Content visibility';
+COMMENT ON TYPE public.content_status IS 'Content visibility';
 
 
 --
 -- Name: counter; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE counter AS (
+CREATE TYPE public.counter AS (
 	label text,
 	value bigint
 );
@@ -151,7 +150,7 @@ CREATE TYPE counter AS (
 -- Name: directory_entry_type; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE directory_entry_type AS ENUM (
+CREATE TYPE public.directory_entry_type AS ENUM (
     'file',
     'dir',
     'rev'
@@ -162,23 +161,23 @@ CREATE TYPE directory_entry_type AS ENUM (
 -- Name: file_perms; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN file_perms AS integer;
+CREATE DOMAIN public.file_perms AS integer;
 
 
 --
 -- Name: directory_entry; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE directory_entry AS (
-	dir_id sha1_git,
-	type directory_entry_type,
-	target sha1_git,
-	name unix_path,
-	perms file_perms,
-	status content_status,
-	sha1 sha1,
-	sha1_git sha1_git,
-	sha256 sha256,
+CREATE TYPE public.directory_entry AS (
+	dir_id public.sha1_git,
+	type public.directory_entry_type,
+	target public.sha1_git,
+	name public.unix_path,
+	perms public.file_perms,
+	status public.content_status,
+	sha1 public.sha1,
+	sha1_git public.sha1_git,
+	sha256 public.sha256,
 	length bigint
 );
 
@@ -187,7 +186,7 @@ CREATE TYPE directory_entry AS (
 -- Name: entity_type; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE entity_type AS ENUM (
+CREATE TYPE public.entity_type AS ENUM (
     'organization',
     'group_of_entities',
     'hosting',
@@ -201,19 +200,19 @@ CREATE TYPE entity_type AS ENUM (
 -- Name: TYPE entity_type; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE entity_type IS 'Entity types';
+COMMENT ON TYPE public.entity_type IS 'Entity types';
 
 
 --
 -- Name: entity_id; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE entity_id AS (
+CREATE TYPE public.entity_id AS (
 	id bigint,
 	uuid uuid,
 	parent uuid,
 	name text,
-	type entity_type,
+	type public.entity_type,
 	description text,
 	homepage text,
 	active boolean,
@@ -229,7 +228,7 @@ CREATE TYPE entity_id AS (
 -- Name: object_type; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE object_type AS ENUM (
+CREATE TYPE public.object_type AS ENUM (
     'content',
     'directory',
     'revision',
@@ -242,26 +241,14 @@ CREATE TYPE object_type AS ENUM (
 -- Name: TYPE object_type; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE object_type IS 'Data object types stored in data model';
-
-
---
--- Name: object_found; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE object_found AS (
-	sha1_git sha1_git,
-	type object_type,
-	id bytea,
-	object_id bigint
-);
+COMMENT ON TYPE public.object_type IS 'Data object types stored in data model';
 
 
 --
 -- Name: origin_metadata_signature; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE origin_metadata_signature AS (
+CREATE TYPE public.origin_metadata_signature AS (
 	id bigint,
 	origin_id bigint,
 	discovery_date timestamp with time zone,
@@ -278,7 +265,7 @@ CREATE TYPE origin_metadata_signature AS (
 -- Name: origin_visit_status; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE origin_visit_status AS ENUM (
+CREATE TYPE public.origin_visit_status AS ENUM (
     'ongoing',
     'full',
     'partial'
@@ -289,17 +276,17 @@ CREATE TYPE origin_visit_status AS ENUM (
 -- Name: TYPE origin_visit_status; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE origin_visit_status IS 'Possible visit status';
+COMMENT ON TYPE public.origin_visit_status IS 'Possible visit status';
 
 
 --
 -- Name: release_entry; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE release_entry AS (
-	id sha1_git,
-	target sha1_git,
-	target_type object_type,
+CREATE TYPE public.release_entry AS (
+	id public.sha1_git,
+	target public.sha1_git,
+	target_type public.object_type,
 	date timestamp with time zone,
 	date_offset smallint,
 	date_neg_utc_offset boolean,
@@ -318,7 +305,7 @@ CREATE TYPE release_entry AS (
 -- Name: revision_type; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE revision_type AS ENUM (
+CREATE TYPE public.revision_type AS ENUM (
     'git',
     'tar',
     'dsc',
@@ -331,23 +318,23 @@ CREATE TYPE revision_type AS ENUM (
 -- Name: TYPE revision_type; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE revision_type IS 'Possible revision types';
+COMMENT ON TYPE public.revision_type IS 'Possible revision types';
 
 
 --
 -- Name: revision_entry; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE revision_entry AS (
-	id sha1_git,
+CREATE TYPE public.revision_entry AS (
+	id public.sha1_git,
 	date timestamp with time zone,
 	date_offset smallint,
 	date_neg_utc_offset boolean,
 	committer_date timestamp with time zone,
 	committer_date_offset smallint,
 	committer_date_neg_utc_offset boolean,
-	type revision_type,
-	directory sha1_git,
+	type public.revision_type,
+	directory public.sha1_git,
 	message bytea,
 	author_id bigint,
 	author_fullname bytea,
@@ -368,7 +355,7 @@ CREATE TYPE revision_entry AS (
 -- Name: snapshot_target; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE snapshot_target AS ENUM (
+CREATE TYPE public.snapshot_target AS ENUM (
     'content',
     'directory',
     'revision',
@@ -382,18 +369,18 @@ CREATE TYPE snapshot_target AS ENUM (
 -- Name: TYPE snapshot_target; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE snapshot_target IS 'Types of targets for snapshot branches';
+COMMENT ON TYPE public.snapshot_target IS 'Types of targets for snapshot branches';
 
 
 --
 -- Name: snapshot_result; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE snapshot_result AS (
-	snapshot_id sha1_git,
+CREATE TYPE public.snapshot_result AS (
+	snapshot_id public.sha1_git,
 	name bytea,
 	target bytea,
-	target_type snapshot_target
+	target_type public.snapshot_target
 );
 
 
@@ -401,7 +388,7 @@ CREATE TYPE snapshot_result AS (
 -- Name: hash_sha1(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION hash_sha1(text) RETURNS text
+CREATE FUNCTION public.hash_sha1(text) RETURNS text
     LANGUAGE sql IMMUTABLE STRICT
     AS $_$
    select encode(digest($1, 'sha1'), 'hex')
@@ -412,14 +399,14 @@ $_$;
 -- Name: FUNCTION hash_sha1(text); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION hash_sha1(text) IS 'Compute SHA1 hash as text';
+COMMENT ON FUNCTION public.hash_sha1(text) IS 'Compute SHA1 hash as text';
 
 
 --
 -- Name: notify_new_content(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION notify_new_content() RETURNS trigger
+CREATE FUNCTION public.notify_new_content() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
   begin
@@ -438,7 +425,7 @@ $$;
 -- Name: notify_new_directory(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION notify_new_directory() RETURNS trigger
+CREATE FUNCTION public.notify_new_directory() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
   begin
@@ -452,7 +439,7 @@ $$;
 -- Name: notify_new_origin(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION notify_new_origin() RETURNS trigger
+CREATE FUNCTION public.notify_new_origin() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
   begin
@@ -466,7 +453,7 @@ $$;
 -- Name: notify_new_origin_visit(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION notify_new_origin_visit() RETURNS trigger
+CREATE FUNCTION public.notify_new_origin_visit() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
   begin
@@ -483,7 +470,7 @@ $$;
 -- Name: notify_new_release(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION notify_new_release() RETURNS trigger
+CREATE FUNCTION public.notify_new_release() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
   begin
@@ -497,7 +484,7 @@ $$;
 -- Name: notify_new_revision(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION notify_new_revision() RETURNS trigger
+CREATE FUNCTION public.notify_new_revision() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
   begin
@@ -511,7 +498,7 @@ $$;
 -- Name: notify_new_skipped_content(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION notify_new_skipped_content() RETURNS trigger
+CREATE FUNCTION public.notify_new_skipped_content() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
   begin
@@ -530,20 +517,12 @@ $$;
 -- Name: swh_content_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_add() RETURNS void
+CREATE FUNCTION public.swh_content_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
     insert into content (sha1, sha1_git, sha256, blake2s256, length, status)
-        select distinct sha1, sha1_git, sha256, blake2s256, length, status
-	from tmp_content
-	where (sha1, sha1_git, sha256) in (
-            select sha1, sha1_git, sha256
-            from swh_content_missing()
-        );
-        -- TODO XXX use postgres 9.5 "UPSERT" support here, when available.
-        -- Specifically, using "INSERT .. ON CONFLICT IGNORE" we can avoid
-        -- the extra swh_content_missing() query here.
+        select distinct sha1, sha1_git, sha256, blake2s256, length, status from tmp_content;
     return;
 end
 $$;
@@ -557,23 +536,23 @@ SET default_with_oids = false;
 -- Name: content; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE content (
-    sha1 sha1 NOT NULL,
-    sha1_git sha1_git NOT NULL,
-    sha256 sha256 NOT NULL,
-    blake2s256 blake2s256,
+CREATE TABLE public.content (
+    sha1 public.sha1 NOT NULL,
+    sha1_git public.sha1_git NOT NULL,
+    sha256 public.sha256 NOT NULL,
+    blake2s256 public.blake2s256,
     length bigint NOT NULL,
     ctime timestamp with time zone DEFAULT now() NOT NULL,
-    status content_status DEFAULT 'visible'::content_status NOT NULL,
+    status public.content_status DEFAULT 'visible'::public.content_status NOT NULL,
     object_id bigint NOT NULL
 );
 
 
 --
--- Name: swh_content_find(sha1, sha1_git, sha256, blake2s256); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_content_find(public.sha1, public.sha1_git, public.sha256, public.blake2s256); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_find(sha1 sha1 DEFAULT NULL::bytea, sha1_git sha1_git DEFAULT NULL::bytea, sha256 sha256 DEFAULT NULL::bytea, blake2s256 blake2s256 DEFAULT NULL::bytea) RETURNS content
+CREATE FUNCTION public.swh_content_find(sha1 public.sha1 DEFAULT NULL::bytea, sha1_git public.sha1_git DEFAULT NULL::bytea, sha256 public.sha256 DEFAULT NULL::bytea, blake2s256 public.blake2s256 DEFAULT NULL::bytea) RETURNS public.content
     LANGUAGE plpgsql
     AS $$
 declare
@@ -607,10 +586,10 @@ $$;
 
 
 --
--- Name: swh_content_find_directory(sha1); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_content_find_directory(public.sha1); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_find_directory(content_id sha1) RETURNS content_dir
+CREATE FUNCTION public.swh_content_find_directory(content_id public.sha1) RETURNS public.content_dir
     LANGUAGE sql STABLE
     AS $$
     with recursive path as (
@@ -641,7 +620,7 @@ $$;
 -- Name: swh_content_list_by_object_id(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF content
+CREATE FUNCTION public.swh_content_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF public.content
     LANGUAGE sql STABLE
     AS $$
     select * from content
@@ -651,49 +630,10 @@ $$;
 
 
 --
--- Name: swh_content_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_content_missing() RETURNS SETOF content_signature
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query (
-      select sha1, sha1_git, sha256, blake2s256 from tmp_content as tmp
-      where not exists (
-        select 1 from content as c
-        where c.sha1 = tmp.sha1 and
-              c.sha1_git = tmp.sha1_git and
-              c.sha256 = tmp.sha256
-      )
-    );
-    return;
-end
-$$;
-
-
---
--- Name: swh_content_missing_per_sha1(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_content_missing_per_sha1() RETURNS SETOF sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-           (select id::sha1
-            from tmp_bytea as tmp
-            where not exists
-            (select 1 from content as c where c.sha1=tmp.id));
-end
-$$;
-
-
---
 -- Name: swh_content_update(text[]); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_update(columns_update text[]) RETURNS void
+CREATE FUNCTION public.swh_content_update(columns_update text[]) RETURNS void
     LANGUAGE plpgsql
     AS $_$
 declare
@@ -721,14 +661,14 @@ $_$;
 -- Name: FUNCTION swh_content_update(columns_update text[]); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_update(columns_update text[]) IS 'Update existing content''s columns';
+COMMENT ON FUNCTION public.swh_content_update(columns_update text[]) IS 'Update existing content''s columns';
 
 
 --
 -- Name: swh_directory_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_directory_add() RETURNS void
+CREATE FUNCTION public.swh_directory_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -748,10 +688,10 @@ $$;
 
 
 --
--- Name: swh_directory_entry_add(directory_entry_type); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_directory_entry_add(public.directory_entry_type); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_directory_entry_add(typ directory_entry_type) RETURNS void
+CREATE FUNCTION public.swh_directory_entry_add(typ public.directory_entry_type) RETURNS void
     LANGUAGE plpgsql
     AS $_$
 begin
@@ -785,40 +725,10 @@ $_$;
 
 
 --
--- Name: directory; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE directory (
-    id sha1_git NOT NULL,
-    dir_entries bigint[],
-    file_entries bigint[],
-    rev_entries bigint[],
-    object_id bigint NOT NULL
-);
-
-
---
--- Name: swh_directory_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_directory_get() RETURNS SETOF directory
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	select d.*
-        from tmp_directory t
-        inner join directory d on t.id = d.id;
-    return;
-end
-$$;
-
-
---
 -- Name: swh_directory_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_directory_missing() RETURNS SETOF sha1_git
+CREATE FUNCTION public.swh_directory_missing() RETURNS SETOF public.sha1_git
     LANGUAGE plpgsql
     AS $$
 begin
@@ -833,10 +743,10 @@ $$;
 
 
 --
--- Name: swh_directory_walk(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_directory_walk(public.sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_directory_walk(walked_dir_id sha1_git) RETURNS SETOF directory_entry
+CREATE FUNCTION public.swh_directory_walk(walked_dir_id public.sha1_git) RETURNS SETOF public.directory_entry
     LANGUAGE sql STABLE
     AS $$
     with recursive entries as (
@@ -855,10 +765,10 @@ $$;
 
 
 --
--- Name: swh_directory_walk_one(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_directory_walk_one(public.sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_directory_walk_one(walked_dir_id sha1_git) RETURNS SETOF directory_entry
+CREATE FUNCTION public.swh_directory_walk_one(walked_dir_id public.sha1_git) RETURNS SETOF public.directory_entry
     LANGUAGE sql STABLE
     AS $$
     with dir as (
@@ -894,7 +804,7 @@ $$;
 -- Name: swh_entity_from_tmp_entity_lister(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_entity_from_tmp_entity_lister() RETURNS SETOF entity_id
+CREATE FUNCTION public.swh_entity_from_tmp_entity_lister() RETURNS SETOF public.entity_id
     LANGUAGE plpgsql
     AS $$
 begin
@@ -912,11 +822,11 @@ $$;
 -- Name: entity; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE entity (
+CREATE TABLE public.entity (
     uuid uuid NOT NULL,
     parent uuid,
     name text NOT NULL,
-    type entity_type NOT NULL,
+    type public.entity_type NOT NULL,
     description text,
     homepage text,
     active boolean NOT NULL,
@@ -932,7 +842,7 @@ CREATE TABLE entity (
 -- Name: swh_entity_get(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_entity_get(entity_uuid uuid) RETURNS SETOF entity
+CREATE FUNCTION public.swh_entity_get(entity_uuid uuid) RETURNS SETOF public.entity
     LANGUAGE sql STABLE
     AS $$
   with recursive entity_hierarchy as (
@@ -952,7 +862,7 @@ $$;
 -- Name: swh_entity_history_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_entity_history_add() RETURNS void
+CREATE FUNCTION public.swh_entity_history_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -965,10 +875,10 @@ $$;
 
 
 --
--- Name: swh_find_directory_entry_by_path(sha1_git, bytea[]); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_find_directory_entry_by_path(public.sha1_git, bytea[]); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_find_directory_entry_by_path(walked_dir_id sha1_git, dir_or_content_path bytea[]) RETURNS directory_entry
+CREATE FUNCTION public.swh_find_directory_entry_by_path(walked_dir_id public.sha1_git, dir_or_content_path bytea[]) RETURNS public.directory_entry
     LANGUAGE plpgsql
     AS $$
 declare
@@ -1024,7 +934,7 @@ $$;
 -- Name: swh_mktemp(regclass); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp(tblname regclass) RETURNS void
+CREATE FUNCTION public.swh_mktemp(tblname regclass) RETURNS void
     LANGUAGE plpgsql
     AS $_$
 begin
@@ -1040,23 +950,10 @@ $_$;
 
 
 --
--- Name: swh_mktemp_bytea(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_mktemp_bytea() RETURNS void
-    LANGUAGE sql
-    AS $$
-    create temporary table tmp_bytea (
-      id bytea
-    ) on commit drop;
-$$;
-
-
---
 -- Name: swh_mktemp_dir_entry(regclass); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_dir_entry(tblname regclass) RETURNS void
+CREATE FUNCTION public.swh_mktemp_dir_entry(tblname regclass) RETURNS void
     LANGUAGE plpgsql
     AS $_$
 begin
@@ -1075,7 +972,7 @@ $_$;
 -- Name: swh_mktemp_entity_history(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_entity_history() RETURNS void
+CREATE FUNCTION public.swh_mktemp_entity_history() RETURNS void
     LANGUAGE sql
     AS $$
     create temporary table tmp_entity_history (
@@ -1088,7 +985,7 @@ $$;
 -- Name: swh_mktemp_entity_lister(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_entity_lister() RETURNS void
+CREATE FUNCTION public.swh_mktemp_entity_lister() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_entity_lister (
@@ -1102,7 +999,7 @@ $$;
 -- Name: swh_mktemp_occurrence_history(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_occurrence_history() RETURNS void
+CREATE FUNCTION public.swh_mktemp_occurrence_history() RETURNS void
     LANGUAGE sql
     AS $$
     create temporary table tmp_occurrence_history(
@@ -1119,7 +1016,7 @@ $$;
 -- Name: swh_mktemp_release(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_release() RETURNS void
+CREATE FUNCTION public.swh_mktemp_release() RETURNS void
     LANGUAGE sql
     AS $$
     create temporary table tmp_release (
@@ -1137,7 +1034,7 @@ $$;
 -- Name: swh_mktemp_revision(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_revision() RETURNS void
+CREATE FUNCTION public.swh_mktemp_revision() RETURNS void
     LANGUAGE sql
     AS $$
     create temporary table tmp_revision (
@@ -1159,7 +1056,7 @@ $$;
 -- Name: swh_mktemp_snapshot_branch(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_snapshot_branch() RETURNS void
+CREATE FUNCTION public.swh_mktemp_snapshot_branch() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_snapshot_branch (
@@ -1174,7 +1071,7 @@ $$;
 -- Name: swh_mktemp_tool(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_tool() RETURNS void
+CREATE FUNCTION public.swh_mktemp_tool() RETURNS void
     LANGUAGE sql
     AS $$
     create temporary table tmp_tool (
@@ -1185,42 +1082,14 @@ $$;
 
 
 --
--- Name: swh_object_find_by_sha1_git(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_object_find_by_sha1_git() RETURNS SETOF object_found
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-    with known_objects as ((
-        select id as sha1_git, 'release'::object_type as type, id, object_id from release r
-        where exists (select 1 from tmp_bytea t where t.id = r.id)
-    ) union all (
-        select id as sha1_git, 'revision'::object_type as type, id, object_id from revision r
-        where exists (select 1 from tmp_bytea t where t.id = r.id)
-    ) union all (
-        select id as sha1_git, 'directory'::object_type as type, id, object_id from directory d
-        where exists (select 1 from tmp_bytea t where t.id = d.id)
-    ) union all (
-        select sha1_git as sha1_git, 'content'::object_type as type, sha1 as id, object_id from content c
-        where exists (select 1 from tmp_bytea t where t.id = c.sha1_git)
-    ))
-    select t.id::sha1_git as sha1_git, k.type, k.id, k.object_id from tmp_bytea t
-      left join known_objects k on t.id = k.sha1_git;
-end
-$$;
-
-
---
 -- Name: occurrence; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE occurrence (
+CREATE TABLE public.occurrence (
     origin bigint NOT NULL,
     branch bytea NOT NULL,
-    target sha1_git NOT NULL,
-    target_type object_type NOT NULL
+    target public.sha1_git NOT NULL,
+    target_type public.object_type NOT NULL
 );
 
 
@@ -1228,7 +1097,7 @@ CREATE TABLE occurrence (
 -- Name: swh_occurrence_by_origin_visit(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_occurrence_by_origin_visit(origin_id bigint, visit_id bigint) RETURNS SETOF occurrence
+CREATE FUNCTION public.swh_occurrence_by_origin_visit(origin_id bigint, visit_id bigint) RETURNS SETOF public.occurrence
     LANGUAGE sql STABLE
     AS $$
   select origin, branch, target, target_type from occurrence_history
@@ -1240,11 +1109,11 @@ $$;
 -- Name: occurrence_history; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE occurrence_history (
+CREATE TABLE public.occurrence_history (
     origin bigint NOT NULL,
     branch bytea NOT NULL,
-    target sha1_git NOT NULL,
-    target_type object_type NOT NULL,
+    target public.sha1_git NOT NULL,
+    target_type public.object_type NOT NULL,
     visits bigint[] NOT NULL,
     object_id bigint NOT NULL,
     snapshot_branch_id bigint
@@ -1255,7 +1124,7 @@ CREATE TABLE occurrence_history (
 -- Name: swh_occurrence_get_by(bigint, bytea, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_occurrence_get_by(origin_id bigint, branch_name bytea DEFAULT NULL::bytea, date timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF occurrence_history
+CREATE FUNCTION public.swh_occurrence_get_by(origin_id bigint, branch_name bytea DEFAULT NULL::bytea, date timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF public.occurrence_history
     LANGUAGE plpgsql
     AS $$
 declare
@@ -1291,7 +1160,7 @@ $$;
 -- Name: swh_occurrence_history_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_occurrence_history_add() RETURNS void
+CREATE FUNCTION public.swh_occurrence_history_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 declare
@@ -1334,7 +1203,7 @@ $$;
 -- Name: swh_occurrence_update_all(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_occurrence_update_all() RETURNS void
+CREATE FUNCTION public.swh_occurrence_update_all() RETURNS void
     LANGUAGE plpgsql
     AS $$
 declare
@@ -1354,7 +1223,7 @@ $$;
 -- Name: swh_occurrence_update_for_origin(bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_occurrence_update_for_origin(origin_id bigint) RETURNS void
+CREATE FUNCTION public.swh_occurrence_update_for_origin(origin_id bigint) RETURNS void
     LANGUAGE sql
     AS $$
   delete from occurrence where origin = origin_id;
@@ -1373,7 +1242,7 @@ $$;
 -- Name: swh_origin_metadata_get_by_origin(integer); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_origin_metadata_get_by_origin(origin integer) RETURNS SETOF origin_metadata_signature
+CREATE FUNCTION public.swh_origin_metadata_get_by_origin(origin integer) RETURNS SETOF public.origin_metadata_signature
     LANGUAGE sql STABLE
     AS $$
     select om.id as id, origin_id, discovery_date, tool_id, om.metadata,
@@ -1389,7 +1258,7 @@ $$;
 -- Name: swh_origin_metadata_get_by_provider_type(integer, text); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_origin_metadata_get_by_provider_type(origin integer, type text) RETURNS SETOF origin_metadata_signature
+CREATE FUNCTION public.swh_origin_metadata_get_by_provider_type(origin integer, type text) RETURNS SETOF public.origin_metadata_signature
     LANGUAGE sql STABLE
     AS $$
     select om.id as id, origin_id, discovery_date, tool_id, om.metadata,
@@ -1406,7 +1275,7 @@ $$;
 -- Name: swh_origin_visit_add(bigint, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_origin_visit_add(origin_id bigint, date timestamp with time zone) RETURNS bigint
+CREATE FUNCTION public.swh_origin_visit_add(origin_id bigint, date timestamp with time zone) RETURNS bigint
     LANGUAGE sql
     AS $$
   with last_known_visit as (
@@ -1424,7 +1293,7 @@ $$;
 -- Name: swh_person_add_from_release(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_person_add_from_release() RETURNS void
+CREATE FUNCTION public.swh_person_add_from_release() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1446,7 +1315,7 @@ $$;
 -- Name: swh_person_add_from_revision(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_person_add_from_revision() RETURNS void
+CREATE FUNCTION public.swh_person_add_from_revision() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1470,7 +1339,7 @@ $$;
 -- Name: swh_release_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_release_add() RETURNS void
+CREATE FUNCTION public.swh_release_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1486,29 +1355,10 @@ $$;
 
 
 --
--- Name: swh_release_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_release_get() RETURNS SETOF release_entry
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select r.id, r.target, r.target_type, r.date, r.date_offset, r.date_neg_utc_offset, r.name, r.comment,
-               r.synthetic, p.id as author_id, p.fullname as author_fullname, p.name as author_name, p.email as author_email, r.object_id
-        from tmp_bytea t
-        inner join release r on t.id = r.id
-        inner join person p on p.id = r.author;
-    return;
-end
-$$;
-
-
---
 -- Name: swh_release_get_by(bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_release_get_by(origin_id bigint) RETURNS SETOF release_entry
+CREATE FUNCTION public.swh_release_get_by(origin_id bigint) RETURNS SETOF public.release_entry
     LANGUAGE sql STABLE
     AS $$
    select r.id, r.target, r.target_type, r.date, r.date_offset, r.date_neg_utc_offset,
@@ -1525,7 +1375,7 @@ $$;
 -- Name: swh_release_list_by_object_id(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_release_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF release_entry
+CREATE FUNCTION public.swh_release_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF public.release_entry
     LANGUAGE sql STABLE
     AS $$
     with rels as (
@@ -1541,27 +1391,10 @@ $$;
 
 
 --
--- Name: swh_release_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_release_missing() RETURNS SETOF sha1_git
-    LANGUAGE plpgsql
-    AS $$
-begin
-  return query
-    select id::sha1_git from tmp_bytea t
-    where not exists (
-      select 1 from release r
-      where r.id = t.id);
-end
-$$;
-
-
---
 -- Name: swh_revision_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_add() RETURNS void
+CREATE FUNCTION public.swh_revision_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1578,10 +1411,10 @@ $$;
 
 
 --
--- Name: swh_revision_find_occurrence(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_revision_find_occurrence(public.sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_find_occurrence(revision_id sha1_git) RETURNS occurrence
+CREATE FUNCTION public.swh_revision_find_occurrence(revision_id public.sha1_git) RETURNS public.occurrence
     LANGUAGE sql STABLE
     AS $$
 	select origin, branch, target, target_type
@@ -1595,34 +1428,10 @@ $$;
 
 
 --
--- Name: swh_revision_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_revision_get() RETURNS SETOF revision_entry
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select r.id, r.date, r.date_offset, r.date_neg_utc_offset,
-               r.committer_date, r.committer_date_offset, r.committer_date_neg_utc_offset,
-               r.type, r.directory, r.message,
-               a.id, a.fullname, a.name, a.email, c.id, c.fullname, c.name, c.email, r.metadata, r.synthetic,
-         array(select rh.parent_id::bytea from revision_history rh where rh.id = t.id order by rh.parent_rank)
-                   as parents, r.object_id
-        from tmp_bytea t
-        left join revision r on t.id = r.id
-        left join person a on a.id = r.author
-        left join person c on c.id = r.committer;
-    return;
-end
-$$;
-
-
---
 -- Name: swh_revision_get_by(bigint, bytea, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_get_by(origin_id bigint, branch_name bytea DEFAULT NULL::bytea, date timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF revision_entry
+CREATE FUNCTION public.swh_revision_get_by(origin_id bigint, branch_name bytea DEFAULT NULL::bytea, date timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF public.revision_entry
     LANGUAGE sql STABLE
     AS $$
     select r.id, r.date, r.date_offset, r.date_neg_utc_offset,
@@ -1645,7 +1454,7 @@ $$;
 -- Name: swh_revision_list(bytea[], bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_list(root_revisions bytea[], num_revs bigint DEFAULT NULL::bigint) RETURNS TABLE(id sha1_git, parents bytea[])
+CREATE FUNCTION public.swh_revision_list(root_revisions bytea[], num_revs bigint DEFAULT NULL::bigint) RETURNS TABLE(id public.sha1_git, parents bytea[])
     LANGUAGE sql STABLE
     AS $$
     with recursive full_rev_list(id) as (
@@ -1670,7 +1479,7 @@ $$;
 -- Name: swh_revision_list_by_object_id(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF revision_entry
+CREATE FUNCTION public.swh_revision_list_by_object_id(min_excl bigint, max_incl bigint) RETURNS SETOF public.revision_entry
     LANGUAGE sql STABLE
     AS $$
     with revs as (
@@ -1694,7 +1503,7 @@ $$;
 -- Name: swh_revision_list_children(bytea[], bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_list_children(root_revisions bytea[], num_revs bigint DEFAULT NULL::bigint) RETURNS TABLE(id sha1_git, parents bytea[])
+CREATE FUNCTION public.swh_revision_list_children(root_revisions bytea[], num_revs bigint DEFAULT NULL::bigint) RETURNS TABLE(id public.sha1_git, parents bytea[])
     LANGUAGE sql STABLE
     AS $$
     with recursive full_rev_list(id) as (
@@ -1719,7 +1528,7 @@ $$;
 -- Name: swh_revision_log(bytea[], bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_log(root_revisions bytea[], num_revs bigint DEFAULT NULL::bigint) RETURNS SETOF revision_entry
+CREATE FUNCTION public.swh_revision_log(root_revisions bytea[], num_revs bigint DEFAULT NULL::bigint) RETURNS SETOF public.revision_entry
     LANGUAGE sql STABLE
     AS $$
     select t.id, r.date, r.date_offset, r.date_neg_utc_offset,
@@ -1736,28 +1545,10 @@ $$;
 
 
 --
--- Name: swh_revision_missing(); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_revision_walk(public.sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_missing() RETURNS SETOF sha1_git
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select id::sha1_git from tmp_bytea t
-	where not exists (
-	    select 1 from revision r
-	    where r.id = t.id);
-    return;
-end
-$$;
-
-
---
--- Name: swh_revision_walk(sha1_git); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION swh_revision_walk(revision_id sha1_git) RETURNS SETOF directory_entry
+CREATE FUNCTION public.swh_revision_walk(revision_id public.sha1_git) RETURNS SETOF public.directory_entry
     LANGUAGE sql STABLE
     AS $$
   select dir_id, type, target, name, perms, status, sha1, sha1_git, sha256, length
@@ -1766,17 +1557,17 @@ $$;
 
 
 --
--- Name: FUNCTION swh_revision_walk(revision_id sha1_git); Type: COMMENT; Schema: public; Owner: -
+-- Name: FUNCTION swh_revision_walk(revision_id public.sha1_git); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_revision_walk(revision_id sha1_git) IS 'Recursively list the revision targeted directory arborescence';
+COMMENT ON FUNCTION public.swh_revision_walk(revision_id public.sha1_git) IS 'Recursively list the revision targeted directory arborescence';
 
 
 --
 -- Name: swh_skipped_content_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_skipped_content_add() RETURNS void
+CREATE FUNCTION public.swh_skipped_content_add() RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1799,7 +1590,7 @@ $$;
 -- Name: swh_skipped_content_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_skipped_content_missing() RETURNS SETOF content_signature
+CREATE FUNCTION public.swh_skipped_content_missing() RETURNS SETOF public.content_signature
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1816,10 +1607,10 @@ $$;
 
 
 --
--- Name: swh_snapshot_add(bigint, bigint, sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_snapshot_add(bigint, bigint, public.sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_snapshot_add(origin bigint, visit bigint, snapshot_id sha1_git) RETURNS void
+CREATE FUNCTION public.swh_snapshot_add(origin bigint, visit bigint, snapshot_id public.sha1_git) RETURNS void
     LANGUAGE plpgsql
     AS $$
 declare
@@ -1860,10 +1651,10 @@ $$;
 
 
 --
--- Name: swh_snapshot_get_by_id(sha1_git); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_snapshot_get_by_id(public.sha1_git); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_snapshot_get_by_id(id sha1_git) RETURNS SETOF snapshot_result
+CREATE FUNCTION public.swh_snapshot_get_by_id(id public.sha1_git) RETURNS SETOF public.snapshot_result
     LANGUAGE sql STABLE
     AS $$
   select
@@ -1878,7 +1669,7 @@ $$;
 -- Name: swh_snapshot_get_by_origin_visit(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_snapshot_get_by_origin_visit(origin_id bigint, visit_id bigint) RETURNS sha1_git
+CREATE FUNCTION public.swh_snapshot_get_by_origin_visit(origin_id bigint, visit_id bigint) RETURNS public.sha1_git
     LANGUAGE sql STABLE
     AS $$
   select snapshot.id
@@ -1893,7 +1684,7 @@ $$;
 -- Name: swh_stat_counters(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_stat_counters() RETURNS SETOF counter
+CREATE FUNCTION public.swh_stat_counters() RETURNS SETOF public.counter
     LANGUAGE sql STABLE
     AS $$
     select object_type as label, value as value
@@ -1923,7 +1714,7 @@ $$;
 -- Name: tool; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE tool (
+CREATE TABLE public.tool (
     id integer NOT NULL,
     name text NOT NULL,
     version text NOT NULL,
@@ -1935,35 +1726,35 @@ CREATE TABLE tool (
 -- Name: TABLE tool; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE tool IS 'Tool information';
+COMMENT ON TABLE public.tool IS 'Tool information';
 
 
 --
 -- Name: COLUMN tool.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN tool.id IS 'Tool identifier';
+COMMENT ON COLUMN public.tool.id IS 'Tool identifier';
 
 
 --
 -- Name: COLUMN tool.version; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN tool.version IS 'Tool version';
+COMMENT ON COLUMN public.tool.version IS 'Tool version';
 
 
 --
 -- Name: COLUMN tool.configuration; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN tool.configuration IS 'Tool configuration: command line, flags, etc...';
+COMMENT ON COLUMN public.tool.configuration IS 'Tool configuration: command line, flags, etc...';
 
 
 --
 -- Name: swh_tool_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_tool_add() RETURNS SETOF tool
+CREATE FUNCTION public.swh_tool_add() RETURNS SETOF public.tool
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1985,7 +1776,7 @@ $$;
 -- Name: swh_update_counter(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_update_counter(object_type text) RETURNS void
+CREATE FUNCTION public.swh_update_counter(object_type text) RETURNS void
     LANGUAGE plpgsql
     AS $_$
 begin
@@ -2004,10 +1795,87 @@ $_$;
 
 
 --
+-- Name: swh_update_counter_bucketed(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.swh_update_counter_bucketed() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+declare
+  query text;
+  line_to_update int;
+  new_value bigint;
+begin
+  select
+    object_counts_bucketed.line,
+    format(
+      'select count(%I) from %I where %s',
+      coalesce(identifier, '*'),
+      object_type,
+      coalesce(
+        concat_ws(
+          ' and ',
+          case when bucket_start is not null then
+            format('%I >= %L', identifier, bucket_start) -- lower bound condition, inclusive
+          end,
+          case when bucket_end is not null then
+            format('%I < %L', identifier, bucket_end) -- upper bound condition, exclusive
+          end
+        ),
+        'true'
+      )
+    )
+    from object_counts_bucketed
+    order by coalesce(last_update, now() - '1 month'::interval) asc
+    limit 1
+    into line_to_update, query;
+
+  execute query into new_value;
+
+  update object_counts_bucketed
+    set value = new_value,
+        last_update = now()
+    where object_counts_bucketed.line = line_to_update;
+
+END
+$$;
+
+
+--
+-- Name: swh_update_counters_from_buckets(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.swh_update_counters_from_buckets() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+begin
+with to_update as (
+  select object_type, sum(value) as value, max(last_update) as last_update
+  from object_counts_bucketed ob1
+  where not exists (
+    select 1 from object_counts_bucketed ob2
+    where ob1.object_type = ob2.object_type
+    and value is null
+    )
+  group by object_type
+) update object_counts
+  set
+    value = to_update.value,
+    last_update = to_update.last_update
+  from to_update
+  where
+    object_counts.object_type = to_update.object_type
+    and object_counts.value != to_update.value;
+return null;
+end
+$$;
+
+
+--
 -- Name: swh_update_entity_from_entity_history(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_update_entity_from_entity_history() RETURNS trigger
+CREATE FUNCTION public.swh_update_entity_from_entity_history() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 begin
@@ -2040,11 +1908,11 @@ $$;
 -- Name: origin_visit; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE origin_visit (
+CREATE TABLE public.origin_visit (
     origin bigint NOT NULL,
     visit bigint NOT NULL,
     date timestamp with time zone NOT NULL,
-    status origin_visit_status NOT NULL,
+    status public.origin_visit_status NOT NULL,
     metadata jsonb,
     snapshot_id bigint
 );
@@ -2054,49 +1922,49 @@ CREATE TABLE origin_visit (
 -- Name: COLUMN origin_visit.origin; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_visit.origin IS 'Visited origin';
+COMMENT ON COLUMN public.origin_visit.origin IS 'Visited origin';
 
 
 --
 -- Name: COLUMN origin_visit.visit; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_visit.visit IS 'Visit number the visit occurred for that origin';
+COMMENT ON COLUMN public.origin_visit.visit IS 'Visit number the visit occurred for that origin';
 
 
 --
 -- Name: COLUMN origin_visit.date; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_visit.date IS 'Visit date for that origin';
+COMMENT ON COLUMN public.origin_visit.date IS 'Visit date for that origin';
 
 
 --
 -- Name: COLUMN origin_visit.status; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_visit.status IS 'Visit status for that origin';
+COMMENT ON COLUMN public.origin_visit.status IS 'Visit status for that origin';
 
 
 --
 -- Name: COLUMN origin_visit.metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_visit.metadata IS 'Metadata associated with the visit';
+COMMENT ON COLUMN public.origin_visit.metadata IS 'Metadata associated with the visit';
 
 
 --
 -- Name: COLUMN origin_visit.snapshot_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_visit.snapshot_id IS 'id of the snapshot associated with the visit';
+COMMENT ON COLUMN public.origin_visit.snapshot_id IS 'id of the snapshot associated with the visit';
 
 
 --
 -- Name: swh_visit_find_by_date(bigint, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_visit_find_by_date(origin bigint, visit_date timestamp with time zone DEFAULT now()) RETURNS origin_visit
+CREATE FUNCTION public.swh_visit_find_by_date(origin bigint, visit_date timestamp with time zone DEFAULT now()) RETURNS public.origin_visit
     LANGUAGE sql STABLE
     AS $$
   with closest_two_visits as ((
@@ -2121,7 +1989,7 @@ $$;
 -- Name: swh_visit_get(bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_visit_get(origin bigint) RETURNS origin_visit
+CREATE FUNCTION public.swh_visit_get(origin bigint) RETURNS public.origin_visit
     LANGUAGE sql STABLE
     AS $$
     select *
@@ -2135,7 +2003,7 @@ $$;
 -- Name: content_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE content_object_id_seq
+CREATE SEQUENCE public.content_object_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2147,14 +2015,14 @@ CREATE SEQUENCE content_object_id_seq
 -- Name: content_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE content_object_id_seq OWNED BY content.object_id;
+ALTER SEQUENCE public.content_object_id_seq OWNED BY public.content.object_id;
 
 
 --
 -- Name: dbversion; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE dbversion (
+CREATE TABLE public.dbversion (
     version integer NOT NULL,
     release timestamp with time zone,
     description text
@@ -2162,14 +2030,27 @@ CREATE TABLE dbversion (
 
 
 --
+-- Name: directory; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.directory (
+    id public.sha1_git NOT NULL,
+    dir_entries bigint[],
+    file_entries bigint[],
+    rev_entries bigint[],
+    object_id bigint NOT NULL
+);
+
+
+--
 -- Name: directory_entry_dir; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE directory_entry_dir (
+CREATE TABLE public.directory_entry_dir (
     id bigint NOT NULL,
-    target sha1_git,
-    name unix_path,
-    perms file_perms
+    target public.sha1_git,
+    name public.unix_path,
+    perms public.file_perms
 );
 
 
@@ -2177,7 +2058,7 @@ CREATE TABLE directory_entry_dir (
 -- Name: directory_entry_dir_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE directory_entry_dir_id_seq
+CREATE SEQUENCE public.directory_entry_dir_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2189,18 +2070,18 @@ CREATE SEQUENCE directory_entry_dir_id_seq
 -- Name: directory_entry_dir_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE directory_entry_dir_id_seq OWNED BY directory_entry_dir.id;
+ALTER SEQUENCE public.directory_entry_dir_id_seq OWNED BY public.directory_entry_dir.id;
 
 
 --
 -- Name: directory_entry_file; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE directory_entry_file (
+CREATE TABLE public.directory_entry_file (
     id bigint NOT NULL,
-    target sha1_git,
-    name unix_path,
-    perms file_perms
+    target public.sha1_git,
+    name public.unix_path,
+    perms public.file_perms
 );
 
 
@@ -2208,7 +2089,7 @@ CREATE TABLE directory_entry_file (
 -- Name: directory_entry_file_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE directory_entry_file_id_seq
+CREATE SEQUENCE public.directory_entry_file_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2220,18 +2101,18 @@ CREATE SEQUENCE directory_entry_file_id_seq
 -- Name: directory_entry_file_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE directory_entry_file_id_seq OWNED BY directory_entry_file.id;
+ALTER SEQUENCE public.directory_entry_file_id_seq OWNED BY public.directory_entry_file.id;
 
 
 --
 -- Name: directory_entry_rev; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE directory_entry_rev (
+CREATE TABLE public.directory_entry_rev (
     id bigint NOT NULL,
-    target sha1_git,
-    name unix_path,
-    perms file_perms
+    target public.sha1_git,
+    name public.unix_path,
+    perms public.file_perms
 );
 
 
@@ -2239,7 +2120,7 @@ CREATE TABLE directory_entry_rev (
 -- Name: directory_entry_rev_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE directory_entry_rev_id_seq
+CREATE SEQUENCE public.directory_entry_rev_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2251,14 +2132,14 @@ CREATE SEQUENCE directory_entry_rev_id_seq
 -- Name: directory_entry_rev_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE directory_entry_rev_id_seq OWNED BY directory_entry_rev.id;
+ALTER SEQUENCE public.directory_entry_rev_id_seq OWNED BY public.directory_entry_rev.id;
 
 
 --
 -- Name: directory_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE directory_object_id_seq
+CREATE SEQUENCE public.directory_object_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2270,14 +2151,14 @@ CREATE SEQUENCE directory_object_id_seq
 -- Name: directory_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE directory_object_id_seq OWNED BY directory.object_id;
+ALTER SEQUENCE public.directory_object_id_seq OWNED BY public.directory.object_id;
 
 
 --
 -- Name: entity_equivalence; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE entity_equivalence (
+CREATE TABLE public.entity_equivalence (
     entity1 uuid NOT NULL,
     entity2 uuid NOT NULL,
     CONSTRAINT order_entities CHECK ((entity1 < entity2))
@@ -2288,12 +2169,12 @@ CREATE TABLE entity_equivalence (
 -- Name: entity_history; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE entity_history (
+CREATE TABLE public.entity_history (
     id bigint NOT NULL,
     uuid uuid,
     parent uuid,
     name text NOT NULL,
-    type entity_type NOT NULL,
+    type public.entity_type NOT NULL,
     description text,
     homepage text,
     active boolean NOT NULL,
@@ -2308,7 +2189,7 @@ CREATE TABLE entity_history (
 -- Name: entity_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE entity_history_id_seq
+CREATE SEQUENCE public.entity_history_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2320,14 +2201,14 @@ CREATE SEQUENCE entity_history_id_seq
 -- Name: entity_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE entity_history_id_seq OWNED BY entity_history.id;
+ALTER SEQUENCE public.entity_history_id_seq OWNED BY public.entity_history.id;
 
 
 --
 -- Name: fetch_history; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE fetch_history (
+CREATE TABLE public.fetch_history (
     id bigint NOT NULL,
     origin bigint,
     date timestamp with time zone NOT NULL,
@@ -2343,7 +2224,7 @@ CREATE TABLE fetch_history (
 -- Name: fetch_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE fetch_history_id_seq
+CREATE SEQUENCE public.fetch_history_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2355,14 +2236,14 @@ CREATE SEQUENCE fetch_history_id_seq
 -- Name: fetch_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE fetch_history_id_seq OWNED BY fetch_history.id;
+ALTER SEQUENCE public.fetch_history_id_seq OWNED BY public.fetch_history.id;
 
 
 --
 -- Name: list_history; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE list_history (
+CREATE TABLE public.list_history (
     id bigint NOT NULL,
     date timestamp with time zone NOT NULL,
     status boolean,
@@ -2378,7 +2259,7 @@ CREATE TABLE list_history (
 -- Name: list_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE list_history_id_seq
+CREATE SEQUENCE public.list_history_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2390,14 +2271,14 @@ CREATE SEQUENCE list_history_id_seq
 -- Name: list_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE list_history_id_seq OWNED BY list_history.id;
+ALTER SEQUENCE public.list_history_id_seq OWNED BY public.list_history.id;
 
 
 --
 -- Name: listable_entity; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE listable_entity (
+CREATE TABLE public.listable_entity (
     uuid uuid NOT NULL,
     enabled boolean DEFAULT true NOT NULL,
     list_engine text,
@@ -2411,7 +2292,7 @@ CREATE TABLE listable_entity (
 -- Name: metadata_provider; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE metadata_provider (
+CREATE TABLE public.metadata_provider (
     id integer NOT NULL,
     provider_name text NOT NULL,
     provider_type text NOT NULL,
@@ -2424,42 +2305,42 @@ CREATE TABLE metadata_provider (
 -- Name: TABLE metadata_provider; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE metadata_provider IS 'Metadata provider information';
+COMMENT ON TABLE public.metadata_provider IS 'Metadata provider information';
 
 
 --
 -- Name: COLUMN metadata_provider.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN metadata_provider.id IS 'Provider''s identifier';
+COMMENT ON COLUMN public.metadata_provider.id IS 'Provider''s identifier';
 
 
 --
 -- Name: COLUMN metadata_provider.provider_name; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN metadata_provider.provider_name IS 'Provider''s name';
+COMMENT ON COLUMN public.metadata_provider.provider_name IS 'Provider''s name';
 
 
 --
 -- Name: COLUMN metadata_provider.provider_url; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN metadata_provider.provider_url IS 'Provider''s url';
+COMMENT ON COLUMN public.metadata_provider.provider_url IS 'Provider''s url';
 
 
 --
 -- Name: COLUMN metadata_provider.metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN metadata_provider.metadata IS 'Other metadata about provider';
+COMMENT ON COLUMN public.metadata_provider.metadata IS 'Other metadata about provider';
 
 
 --
 -- Name: metadata_provider_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE metadata_provider_id_seq
+CREATE SEQUENCE public.metadata_provider_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -2472,25 +2353,61 @@ CREATE SEQUENCE metadata_provider_id_seq
 -- Name: metadata_provider_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE metadata_provider_id_seq OWNED BY metadata_provider.id;
+ALTER SEQUENCE public.metadata_provider_id_seq OWNED BY public.metadata_provider.id;
 
 
 --
 -- Name: object_counts; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE object_counts (
+CREATE TABLE public.object_counts (
     object_type text NOT NULL,
+    value bigint,
+    last_update timestamp with time zone,
+    single_update boolean
+);
+
+
+--
+-- Name: object_counts_bucketed; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.object_counts_bucketed (
+    line integer NOT NULL,
+    object_type text NOT NULL,
+    identifier text NOT NULL,
+    bucket_start bytea,
+    bucket_end bytea,
     value bigint,
     last_update timestamp with time zone
 );
 
 
 --
+-- Name: object_counts_bucketed_line_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.object_counts_bucketed_line_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: object_counts_bucketed_line_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.object_counts_bucketed_line_seq OWNED BY public.object_counts_bucketed.line;
+
+
+--
 -- Name: occurrence_history_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE occurrence_history_object_id_seq
+CREATE SEQUENCE public.occurrence_history_object_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2502,14 +2419,14 @@ CREATE SEQUENCE occurrence_history_object_id_seq
 -- Name: occurrence_history_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE occurrence_history_object_id_seq OWNED BY occurrence_history.object_id;
+ALTER SEQUENCE public.occurrence_history_object_id_seq OWNED BY public.occurrence_history.object_id;
 
 
 --
 -- Name: origin; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE origin (
+CREATE TABLE public.origin (
     id bigint NOT NULL,
     type text,
     url text NOT NULL,
@@ -2522,7 +2439,7 @@ CREATE TABLE origin (
 -- Name: origin_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE origin_id_seq
+CREATE SEQUENCE public.origin_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2534,14 +2451,14 @@ CREATE SEQUENCE origin_id_seq
 -- Name: origin_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE origin_id_seq OWNED BY origin.id;
+ALTER SEQUENCE public.origin_id_seq OWNED BY public.origin.id;
 
 
 --
 -- Name: origin_metadata; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE origin_metadata (
+CREATE TABLE public.origin_metadata (
     id bigint NOT NULL,
     origin_id bigint NOT NULL,
     discovery_date timestamp with time zone NOT NULL,
@@ -2555,56 +2472,56 @@ CREATE TABLE origin_metadata (
 -- Name: TABLE origin_metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE origin_metadata IS 'keeps all metadata found concerning an origin';
+COMMENT ON TABLE public.origin_metadata IS 'keeps all metadata found concerning an origin';
 
 
 --
 -- Name: COLUMN origin_metadata.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata.id IS 'the origin_metadata object''s id';
+COMMENT ON COLUMN public.origin_metadata.id IS 'the origin_metadata object''s id';
 
 
 --
 -- Name: COLUMN origin_metadata.origin_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata.origin_id IS 'the origin id for which the metadata was found';
+COMMENT ON COLUMN public.origin_metadata.origin_id IS 'the origin id for which the metadata was found';
 
 
 --
 -- Name: COLUMN origin_metadata.discovery_date; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata.discovery_date IS 'the date of retrieval';
+COMMENT ON COLUMN public.origin_metadata.discovery_date IS 'the date of retrieval';
 
 
 --
 -- Name: COLUMN origin_metadata.provider_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata.provider_id IS 'the metadata provider: github, openhub, deposit, etc.';
+COMMENT ON COLUMN public.origin_metadata.provider_id IS 'the metadata provider: github, openhub, deposit, etc.';
 
 
 --
 -- Name: COLUMN origin_metadata.tool_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata.tool_id IS 'the tool used for extracting metadata: lister-github, etc.';
+COMMENT ON COLUMN public.origin_metadata.tool_id IS 'the tool used for extracting metadata: lister-github, etc.';
 
 
 --
 -- Name: COLUMN origin_metadata.metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata.metadata IS 'metadata in json format but with original terms';
+COMMENT ON COLUMN public.origin_metadata.metadata IS 'metadata in json format but with original terms';
 
 
 --
 -- Name: origin_metadata_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE origin_metadata_id_seq
+CREATE SEQUENCE public.origin_metadata_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2616,14 +2533,14 @@ CREATE SEQUENCE origin_metadata_id_seq
 -- Name: origin_metadata_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE origin_metadata_id_seq OWNED BY origin_metadata.id;
+ALTER SEQUENCE public.origin_metadata_id_seq OWNED BY public.origin_metadata.id;
 
 
 --
 -- Name: person; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE person (
+CREATE TABLE public.person (
     id bigint NOT NULL,
     name bytea,
     email bytea,
@@ -2635,7 +2552,7 @@ CREATE TABLE person (
 -- Name: person_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE person_id_seq
+CREATE SEQUENCE public.person_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2647,16 +2564,16 @@ CREATE SEQUENCE person_id_seq
 -- Name: person_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE person_id_seq OWNED BY person.id;
+ALTER SEQUENCE public.person_id_seq OWNED BY public.person.id;
 
 
 --
 -- Name: release; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE release (
-    id sha1_git NOT NULL,
-    target sha1_git,
+CREATE TABLE public.release (
+    id public.sha1_git NOT NULL,
+    target public.sha1_git,
     date timestamp with time zone,
     date_offset smallint,
     name bytea,
@@ -2664,7 +2581,7 @@ CREATE TABLE release (
     author bigint,
     synthetic boolean DEFAULT false NOT NULL,
     object_id bigint NOT NULL,
-    target_type object_type NOT NULL,
+    target_type public.object_type NOT NULL,
     date_neg_utc_offset boolean
 );
 
@@ -2673,7 +2590,7 @@ CREATE TABLE release (
 -- Name: release_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE release_object_id_seq
+CREATE SEQUENCE public.release_object_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2685,21 +2602,21 @@ CREATE SEQUENCE release_object_id_seq
 -- Name: release_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE release_object_id_seq OWNED BY release.object_id;
+ALTER SEQUENCE public.release_object_id_seq OWNED BY public.release.object_id;
 
 
 --
 -- Name: revision; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE revision (
-    id sha1_git NOT NULL,
+CREATE TABLE public.revision (
+    id public.sha1_git NOT NULL,
     date timestamp with time zone,
     date_offset smallint,
     committer_date timestamp with time zone,
     committer_date_offset smallint,
-    type revision_type NOT NULL,
-    directory sha1_git,
+    type public.revision_type NOT NULL,
+    directory public.sha1_git,
     message bytea,
     author bigint,
     committer bigint,
@@ -2715,9 +2632,9 @@ CREATE TABLE revision (
 -- Name: revision_history; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE revision_history (
-    id sha1_git NOT NULL,
-    parent_id sha1_git,
+CREATE TABLE public.revision_history (
+    id public.sha1_git NOT NULL,
+    parent_id public.sha1_git,
     parent_rank integer DEFAULT 0 NOT NULL
 );
 
@@ -2726,7 +2643,7 @@ CREATE TABLE revision_history (
 -- Name: revision_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE revision_object_id_seq
+CREATE SEQUENCE public.revision_object_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2738,21 +2655,21 @@ CREATE SEQUENCE revision_object_id_seq
 -- Name: revision_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE revision_object_id_seq OWNED BY revision.object_id;
+ALTER SEQUENCE public.revision_object_id_seq OWNED BY public.revision.object_id;
 
 
 --
 -- Name: skipped_content; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE skipped_content (
-    sha1 sha1,
-    sha1_git sha1_git,
-    sha256 sha256,
-    blake2s256 blake2s256,
+CREATE TABLE public.skipped_content (
+    sha1 public.sha1,
+    sha1_git public.sha1_git,
+    sha256 public.sha256,
+    blake2s256 public.blake2s256,
     length bigint NOT NULL,
     ctime timestamp with time zone DEFAULT now() NOT NULL,
-    status content_status DEFAULT 'absent'::content_status NOT NULL,
+    status public.content_status DEFAULT 'absent'::public.content_status NOT NULL,
     reason text NOT NULL,
     origin bigint,
     object_id bigint NOT NULL
@@ -2763,7 +2680,7 @@ CREATE TABLE skipped_content (
 -- Name: skipped_content_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE skipped_content_object_id_seq
+CREATE SEQUENCE public.skipped_content_object_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2775,16 +2692,16 @@ CREATE SEQUENCE skipped_content_object_id_seq
 -- Name: skipped_content_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE skipped_content_object_id_seq OWNED BY skipped_content.object_id;
+ALTER SEQUENCE public.skipped_content_object_id_seq OWNED BY public.skipped_content.object_id;
 
 
 --
 -- Name: snapshot; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE snapshot (
+CREATE TABLE public.snapshot (
     object_id bigint NOT NULL,
-    id sha1_git
+    id public.sha1_git
 );
 
 
@@ -2792,13 +2709,13 @@ CREATE TABLE snapshot (
 -- Name: snapshot_branch; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE snapshot_branch (
+CREATE TABLE public.snapshot_branch (
     object_id bigint NOT NULL,
     name bytea NOT NULL,
     target bytea,
-    target_type snapshot_target,
+    target_type public.snapshot_target,
     CONSTRAINT snapshot_branch_target_check CHECK (((target_type IS NULL) = (target IS NULL))),
-    CONSTRAINT snapshot_target_check CHECK (((target_type <> ALL (ARRAY['content'::snapshot_target, 'directory'::snapshot_target, 'revision'::snapshot_target, 'release'::snapshot_target, 'snapshot'::snapshot_target])) OR (length(target) = 20)))
+    CONSTRAINT snapshot_target_check CHECK (((target_type <> ALL (ARRAY['content'::public.snapshot_target, 'directory'::public.snapshot_target, 'revision'::public.snapshot_target, 'release'::public.snapshot_target, 'snapshot'::public.snapshot_target])) OR (length(target) = 20)))
 );
 
 
@@ -2806,7 +2723,7 @@ CREATE TABLE snapshot_branch (
 -- Name: snapshot_branch_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE snapshot_branch_object_id_seq
+CREATE SEQUENCE public.snapshot_branch_object_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2818,14 +2735,14 @@ CREATE SEQUENCE snapshot_branch_object_id_seq
 -- Name: snapshot_branch_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE snapshot_branch_object_id_seq OWNED BY snapshot_branch.object_id;
+ALTER SEQUENCE public.snapshot_branch_object_id_seq OWNED BY public.snapshot_branch.object_id;
 
 
 --
 -- Name: snapshot_branches; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE snapshot_branches (
+CREATE TABLE public.snapshot_branches (
     snapshot_id bigint NOT NULL,
     branch_id bigint NOT NULL
 );
@@ -2835,7 +2752,7 @@ CREATE TABLE snapshot_branches (
 -- Name: snapshot_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE snapshot_object_id_seq
+CREATE SEQUENCE public.snapshot_object_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2847,14 +2764,14 @@ CREATE SEQUENCE snapshot_object_id_seq
 -- Name: snapshot_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE snapshot_object_id_seq OWNED BY snapshot.object_id;
+ALTER SEQUENCE public.snapshot_object_id_seq OWNED BY public.snapshot.object_id;
 
 
 --
 -- Name: tool_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE tool_id_seq
+CREATE SEQUENCE public.tool_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -2867,147 +2784,154 @@ CREATE SEQUENCE tool_id_seq
 -- Name: tool_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE tool_id_seq OWNED BY tool.id;
+ALTER SEQUENCE public.tool_id_seq OWNED BY public.tool.id;
 
 
 --
 -- Name: content object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content ALTER COLUMN object_id SET DEFAULT nextval('content_object_id_seq'::regclass);
+ALTER TABLE ONLY public.content ALTER COLUMN object_id SET DEFAULT nextval('public.content_object_id_seq'::regclass);
 
 
 --
 -- Name: directory object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY directory ALTER COLUMN object_id SET DEFAULT nextval('directory_object_id_seq'::regclass);
+ALTER TABLE ONLY public.directory ALTER COLUMN object_id SET DEFAULT nextval('public.directory_object_id_seq'::regclass);
 
 
 --
 -- Name: directory_entry_dir id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY directory_entry_dir ALTER COLUMN id SET DEFAULT nextval('directory_entry_dir_id_seq'::regclass);
+ALTER TABLE ONLY public.directory_entry_dir ALTER COLUMN id SET DEFAULT nextval('public.directory_entry_dir_id_seq'::regclass);
 
 
 --
 -- Name: directory_entry_file id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY directory_entry_file ALTER COLUMN id SET DEFAULT nextval('directory_entry_file_id_seq'::regclass);
+ALTER TABLE ONLY public.directory_entry_file ALTER COLUMN id SET DEFAULT nextval('public.directory_entry_file_id_seq'::regclass);
 
 
 --
 -- Name: directory_entry_rev id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY directory_entry_rev ALTER COLUMN id SET DEFAULT nextval('directory_entry_rev_id_seq'::regclass);
+ALTER TABLE ONLY public.directory_entry_rev ALTER COLUMN id SET DEFAULT nextval('public.directory_entry_rev_id_seq'::regclass);
 
 
 --
 -- Name: entity_history id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY entity_history ALTER COLUMN id SET DEFAULT nextval('entity_history_id_seq'::regclass);
+ALTER TABLE ONLY public.entity_history ALTER COLUMN id SET DEFAULT nextval('public.entity_history_id_seq'::regclass);
 
 
 --
 -- Name: fetch_history id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY fetch_history ALTER COLUMN id SET DEFAULT nextval('fetch_history_id_seq'::regclass);
+ALTER TABLE ONLY public.fetch_history ALTER COLUMN id SET DEFAULT nextval('public.fetch_history_id_seq'::regclass);
 
 
 --
 -- Name: list_history id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY list_history ALTER COLUMN id SET DEFAULT nextval('list_history_id_seq'::regclass);
+ALTER TABLE ONLY public.list_history ALTER COLUMN id SET DEFAULT nextval('public.list_history_id_seq'::regclass);
 
 
 --
 -- Name: metadata_provider id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY metadata_provider ALTER COLUMN id SET DEFAULT nextval('metadata_provider_id_seq'::regclass);
+ALTER TABLE ONLY public.metadata_provider ALTER COLUMN id SET DEFAULT nextval('public.metadata_provider_id_seq'::regclass);
+
+
+--
+-- Name: object_counts_bucketed line; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.object_counts_bucketed ALTER COLUMN line SET DEFAULT nextval('public.object_counts_bucketed_line_seq'::regclass);
 
 
 --
 -- Name: occurrence_history object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY occurrence_history ALTER COLUMN object_id SET DEFAULT nextval('occurrence_history_object_id_seq'::regclass);
+ALTER TABLE ONLY public.occurrence_history ALTER COLUMN object_id SET DEFAULT nextval('public.occurrence_history_object_id_seq'::regclass);
 
 
 --
 -- Name: origin id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin ALTER COLUMN id SET DEFAULT nextval('origin_id_seq'::regclass);
+ALTER TABLE ONLY public.origin ALTER COLUMN id SET DEFAULT nextval('public.origin_id_seq'::regclass);
 
 
 --
 -- Name: origin_metadata id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_metadata ALTER COLUMN id SET DEFAULT nextval('origin_metadata_id_seq'::regclass);
+ALTER TABLE ONLY public.origin_metadata ALTER COLUMN id SET DEFAULT nextval('public.origin_metadata_id_seq'::regclass);
 
 
 --
 -- Name: person id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY person ALTER COLUMN id SET DEFAULT nextval('person_id_seq'::regclass);
+ALTER TABLE ONLY public.person ALTER COLUMN id SET DEFAULT nextval('public.person_id_seq'::regclass);
 
 
 --
 -- Name: release object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY release ALTER COLUMN object_id SET DEFAULT nextval('release_object_id_seq'::regclass);
+ALTER TABLE ONLY public.release ALTER COLUMN object_id SET DEFAULT nextval('public.release_object_id_seq'::regclass);
 
 
 --
 -- Name: revision object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY revision ALTER COLUMN object_id SET DEFAULT nextval('revision_object_id_seq'::regclass);
+ALTER TABLE ONLY public.revision ALTER COLUMN object_id SET DEFAULT nextval('public.revision_object_id_seq'::regclass);
 
 
 --
 -- Name: skipped_content object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY skipped_content ALTER COLUMN object_id SET DEFAULT nextval('skipped_content_object_id_seq'::regclass);
+ALTER TABLE ONLY public.skipped_content ALTER COLUMN object_id SET DEFAULT nextval('public.skipped_content_object_id_seq'::regclass);
 
 
 --
 -- Name: snapshot object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY snapshot ALTER COLUMN object_id SET DEFAULT nextval('snapshot_object_id_seq'::regclass);
+ALTER TABLE ONLY public.snapshot ALTER COLUMN object_id SET DEFAULT nextval('public.snapshot_object_id_seq'::regclass);
 
 
 --
 -- Name: snapshot_branch object_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY snapshot_branch ALTER COLUMN object_id SET DEFAULT nextval('snapshot_branch_object_id_seq'::regclass);
+ALTER TABLE ONLY public.snapshot_branch ALTER COLUMN object_id SET DEFAULT nextval('public.snapshot_branch_object_id_seq'::regclass);
 
 
 --
 -- Name: tool id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY tool ALTER COLUMN id SET DEFAULT nextval('tool_id_seq'::regclass);
+ALTER TABLE ONLY public.tool ALTER COLUMN id SET DEFAULT nextval('public.tool_id_seq'::regclass);
 
 
 --
 -- Data for Name: content; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, object_id) FROM stdin;
+COPY public.content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, object_id) FROM stdin;
 \.
 
 
@@ -3015,8 +2939,8 @@ COPY content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, object_
 -- Data for Name: dbversion; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY dbversion (version, release, description) FROM stdin;
-117	2018-02-06 14:11:19.960582+01	Work In Progress
+COPY public.dbversion (version, release, description) FROM stdin;
+119	2018-06-05 13:57:26.649524+02	Work In Progress
 \.
 
 
@@ -3024,7 +2948,7 @@ COPY dbversion (version, release, description) FROM stdin;
 -- Data for Name: directory; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory (id, dir_entries, file_entries, rev_entries, object_id) FROM stdin;
+COPY public.directory (id, dir_entries, file_entries, rev_entries, object_id) FROM stdin;
 \.
 
 
@@ -3032,7 +2956,7 @@ COPY directory (id, dir_entries, file_entries, rev_entries, object_id) FROM stdi
 -- Data for Name: directory_entry_dir; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_entry_dir (id, target, name, perms) FROM stdin;
+COPY public.directory_entry_dir (id, target, name, perms) FROM stdin;
 \.
 
 
@@ -3040,7 +2964,7 @@ COPY directory_entry_dir (id, target, name, perms) FROM stdin;
 -- Data for Name: directory_entry_file; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_entry_file (id, target, name, perms) FROM stdin;
+COPY public.directory_entry_file (id, target, name, perms) FROM stdin;
 \.
 
 
@@ -3048,7 +2972,7 @@ COPY directory_entry_file (id, target, name, perms) FROM stdin;
 -- Data for Name: directory_entry_rev; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY directory_entry_rev (id, target, name, perms) FROM stdin;
+COPY public.directory_entry_rev (id, target, name, perms) FROM stdin;
 \.
 
 
@@ -3056,18 +2980,18 @@ COPY directory_entry_rev (id, target, name, perms) FROM stdin;
 -- Data for Name: entity; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2018-02-06 14:11:20.150574+01	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2018-02-06 14:11:20.150574+01	11
+COPY public.entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2018-06-05 13:57:26.95401+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	11
 \.
 
 
@@ -3075,7 +2999,7 @@ ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub
 -- Data for Name: entity_equivalence; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY entity_equivalence (entity1, entity2) FROM stdin;
+COPY public.entity_equivalence (entity1, entity2) FROM stdin;
 \.
 
 
@@ -3083,18 +3007,18 @@ COPY entity_equivalence (entity1, entity2) FROM stdin;
 -- Data for Name: entity_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2018-02-06 14:11:20.150574+01"}
+COPY public.entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
 \.
 
 
@@ -3102,7 +3026,7 @@ COPY entity_history (id, uuid, parent, name, type, description, homepage, active
 -- Data for Name: fetch_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY fetch_history (id, origin, date, status, result, stdout, stderr, duration) FROM stdin;
+COPY public.fetch_history (id, origin, date, status, result, stdout, stderr, duration) FROM stdin;
 \.
 
 
@@ -3110,7 +3034,7 @@ COPY fetch_history (id, origin, date, status, result, stdout, stderr, duration) 
 -- Data for Name: list_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY list_history (id, date, status, result, stdout, stderr, duration, entity) FROM stdin;
+COPY public.list_history (id, date, status, result, stdout, stderr, duration, entity) FROM stdin;
 \.
 
 
@@ -3118,7 +3042,7 @@ COPY list_history (id, date, status, result, stdout, stderr, duration, entity) F
 -- Data for Name: listable_entity; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY listable_entity (uuid, enabled, list_engine, list_url, list_params, latest_list) FROM stdin;
+COPY public.listable_entity (uuid, enabled, list_engine, list_url, list_params, latest_list) FROM stdin;
 34bd6b1b-463f-43e5-a697-785107f598e4	t	swh.lister.github	\N	\N	\N
 \.
 
@@ -3127,7 +3051,7 @@ COPY listable_entity (uuid, enabled, list_engine, list_url, list_params, latest_
 -- Data for Name: metadata_provider; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY metadata_provider (id, provider_name, provider_type, provider_url, metadata) FROM stdin;
+COPY public.metadata_provider (id, provider_name, provider_type, provider_url, metadata) FROM stdin;
 \.
 
 
@@ -3135,7 +3059,15 @@ COPY metadata_provider (id, provider_name, provider_type, provider_url, metadata
 -- Data for Name: object_counts; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY object_counts (object_type, value, last_update) FROM stdin;
+COPY public.object_counts (object_type, value, last_update, single_update) FROM stdin;
+\.
+
+
+--
+-- Data for Name: object_counts_bucketed; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.object_counts_bucketed (line, object_type, identifier, bucket_start, bucket_end, value, last_update) FROM stdin;
 \.
 
 
@@ -3143,7 +3075,7 @@ COPY object_counts (object_type, value, last_update) FROM stdin;
 -- Data for Name: occurrence; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY occurrence (origin, branch, target, target_type) FROM stdin;
+COPY public.occurrence (origin, branch, target, target_type) FROM stdin;
 \.
 
 
@@ -3151,7 +3083,7 @@ COPY occurrence (origin, branch, target, target_type) FROM stdin;
 -- Data for Name: occurrence_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY occurrence_history (origin, branch, target, target_type, visits, object_id, snapshot_branch_id) FROM stdin;
+COPY public.occurrence_history (origin, branch, target, target_type, visits, object_id, snapshot_branch_id) FROM stdin;
 \.
 
 
@@ -3159,7 +3091,7 @@ COPY occurrence_history (origin, branch, target, target_type, visits, object_id,
 -- Data for Name: origin; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY origin (id, type, url, lister, project) FROM stdin;
+COPY public.origin (id, type, url, lister, project) FROM stdin;
 \.
 
 
@@ -3167,7 +3099,7 @@ COPY origin (id, type, url, lister, project) FROM stdin;
 -- Data for Name: origin_metadata; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY origin_metadata (id, origin_id, discovery_date, provider_id, tool_id, metadata) FROM stdin;
+COPY public.origin_metadata (id, origin_id, discovery_date, provider_id, tool_id, metadata) FROM stdin;
 \.
 
 
@@ -3175,7 +3107,7 @@ COPY origin_metadata (id, origin_id, discovery_date, provider_id, tool_id, metad
 -- Data for Name: origin_visit; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY origin_visit (origin, visit, date, status, metadata, snapshot_id) FROM stdin;
+COPY public.origin_visit (origin, visit, date, status, metadata, snapshot_id) FROM stdin;
 \.
 
 
@@ -3183,7 +3115,7 @@ COPY origin_visit (origin, visit, date, status, metadata, snapshot_id) FROM stdi
 -- Data for Name: person; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY person (id, name, email, fullname) FROM stdin;
+COPY public.person (id, name, email, fullname) FROM stdin;
 \.
 
 
@@ -3191,7 +3123,7 @@ COPY person (id, name, email, fullname) FROM stdin;
 -- Data for Name: release; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY release (id, target, date, date_offset, name, comment, author, synthetic, object_id, target_type, date_neg_utc_offset) FROM stdin;
+COPY public.release (id, target, date, date_offset, name, comment, author, synthetic, object_id, target_type, date_neg_utc_offset) FROM stdin;
 \.
 
 
@@ -3199,7 +3131,7 @@ COPY release (id, target, date, date_offset, name, comment, author, synthetic, o
 -- Data for Name: revision; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY revision (id, date, date_offset, committer_date, committer_date_offset, type, directory, message, author, committer, synthetic, metadata, object_id, date_neg_utc_offset, committer_date_neg_utc_offset) FROM stdin;
+COPY public.revision (id, date, date_offset, committer_date, committer_date_offset, type, directory, message, author, committer, synthetic, metadata, object_id, date_neg_utc_offset, committer_date_neg_utc_offset) FROM stdin;
 \.
 
 
@@ -3207,7 +3139,7 @@ COPY revision (id, date, date_offset, committer_date, committer_date_offset, typ
 -- Data for Name: revision_history; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY revision_history (id, parent_id, parent_rank) FROM stdin;
+COPY public.revision_history (id, parent_id, parent_rank) FROM stdin;
 \.
 
 
@@ -3215,7 +3147,7 @@ COPY revision_history (id, parent_id, parent_rank) FROM stdin;
 -- Data for Name: skipped_content; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY skipped_content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, reason, origin, object_id) FROM stdin;
+COPY public.skipped_content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, reason, origin, object_id) FROM stdin;
 \.
 
 
@@ -3223,7 +3155,7 @@ COPY skipped_content (sha1, sha1_git, sha256, blake2s256, length, ctime, status,
 -- Data for Name: snapshot; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY snapshot (object_id, id) FROM stdin;
+COPY public.snapshot (object_id, id) FROM stdin;
 \.
 
 
@@ -3231,7 +3163,7 @@ COPY snapshot (object_id, id) FROM stdin;
 -- Data for Name: snapshot_branch; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY snapshot_branch (object_id, name, target, target_type) FROM stdin;
+COPY public.snapshot_branch (object_id, name, target, target_type) FROM stdin;
 \.
 
 
@@ -3239,7 +3171,7 @@ COPY snapshot_branch (object_id, name, target, target_type) FROM stdin;
 -- Data for Name: snapshot_branches; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY snapshot_branches (snapshot_id, branch_id) FROM stdin;
+COPY public.snapshot_branches (snapshot_id, branch_id) FROM stdin;
 \.
 
 
@@ -3247,7 +3179,7 @@ COPY snapshot_branches (snapshot_id, branch_id) FROM stdin;
 -- Data for Name: tool; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY tool (id, name, version, configuration) FROM stdin;
+COPY public.tool (id, name, version, configuration) FROM stdin;
 \.
 
 
@@ -3255,140 +3187,147 @@ COPY tool (id, name, version, configuration) FROM stdin;
 -- Name: content_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('content_object_id_seq', 1, false);
+SELECT pg_catalog.setval('public.content_object_id_seq', 1, false);
 
 
 --
 -- Name: directory_entry_dir_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('directory_entry_dir_id_seq', 1, false);
+SELECT pg_catalog.setval('public.directory_entry_dir_id_seq', 1, false);
 
 
 --
 -- Name: directory_entry_file_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('directory_entry_file_id_seq', 1, false);
+SELECT pg_catalog.setval('public.directory_entry_file_id_seq', 1, false);
 
 
 --
 -- Name: directory_entry_rev_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('directory_entry_rev_id_seq', 1, false);
+SELECT pg_catalog.setval('public.directory_entry_rev_id_seq', 1, false);
 
 
 --
 -- Name: directory_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('directory_object_id_seq', 1, false);
+SELECT pg_catalog.setval('public.directory_object_id_seq', 1, false);
 
 
 --
 -- Name: entity_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('entity_history_id_seq', 11, true);
+SELECT pg_catalog.setval('public.entity_history_id_seq', 11, true);
 
 
 --
 -- Name: fetch_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('fetch_history_id_seq', 1, false);
+SELECT pg_catalog.setval('public.fetch_history_id_seq', 1, false);
 
 
 --
 -- Name: list_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('list_history_id_seq', 1, false);
+SELECT pg_catalog.setval('public.list_history_id_seq', 1, false);
 
 
 --
 -- Name: metadata_provider_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('metadata_provider_id_seq', 1, false);
+SELECT pg_catalog.setval('public.metadata_provider_id_seq', 1, false);
+
+
+--
+-- Name: object_counts_bucketed_line_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.object_counts_bucketed_line_seq', 1, false);
 
 
 --
 -- Name: occurrence_history_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('occurrence_history_object_id_seq', 1, false);
+SELECT pg_catalog.setval('public.occurrence_history_object_id_seq', 1, false);
 
 
 --
 -- Name: origin_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('origin_id_seq', 1, false);
+SELECT pg_catalog.setval('public.origin_id_seq', 1, false);
 
 
 --
 -- Name: origin_metadata_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('origin_metadata_id_seq', 1, false);
+SELECT pg_catalog.setval('public.origin_metadata_id_seq', 1, false);
 
 
 --
 -- Name: person_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('person_id_seq', 1, false);
+SELECT pg_catalog.setval('public.person_id_seq', 1, false);
 
 
 --
 -- Name: release_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('release_object_id_seq', 1, false);
+SELECT pg_catalog.setval('public.release_object_id_seq', 1, false);
 
 
 --
 -- Name: revision_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('revision_object_id_seq', 1, false);
+SELECT pg_catalog.setval('public.revision_object_id_seq', 1, false);
 
 
 --
 -- Name: skipped_content_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('skipped_content_object_id_seq', 1, false);
+SELECT pg_catalog.setval('public.skipped_content_object_id_seq', 1, false);
 
 
 --
 -- Name: snapshot_branch_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('snapshot_branch_object_id_seq', 1, false);
+SELECT pg_catalog.setval('public.snapshot_branch_object_id_seq', 1, false);
 
 
 --
 -- Name: snapshot_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('snapshot_object_id_seq', 1, false);
+SELECT pg_catalog.setval('public.snapshot_object_id_seq', 1, false);
 
 
 --
 -- Name: tool_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('tool_id_seq', 1, false);
+SELECT pg_catalog.setval('public.tool_id_seq', 1, false);
 
 
 --
 -- Name: content content_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content
+ALTER TABLE ONLY public.content
     ADD CONSTRAINT content_pkey PRIMARY KEY (sha1);
 
 
@@ -3396,7 +3335,7 @@ ALTER TABLE ONLY content
 -- Name: dbversion dbversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY dbversion
+ALTER TABLE ONLY public.dbversion
     ADD CONSTRAINT dbversion_pkey PRIMARY KEY (version);
 
 
@@ -3404,7 +3343,7 @@ ALTER TABLE ONLY dbversion
 -- Name: directory_entry_dir directory_entry_dir_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY directory_entry_dir
+ALTER TABLE ONLY public.directory_entry_dir
     ADD CONSTRAINT directory_entry_dir_pkey PRIMARY KEY (id);
 
 
@@ -3412,7 +3351,7 @@ ALTER TABLE ONLY directory_entry_dir
 -- Name: directory_entry_file directory_entry_file_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY directory_entry_file
+ALTER TABLE ONLY public.directory_entry_file
     ADD CONSTRAINT directory_entry_file_pkey PRIMARY KEY (id);
 
 
@@ -3420,7 +3359,7 @@ ALTER TABLE ONLY directory_entry_file
 -- Name: directory_entry_rev directory_entry_rev_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY directory_entry_rev
+ALTER TABLE ONLY public.directory_entry_rev
     ADD CONSTRAINT directory_entry_rev_pkey PRIMARY KEY (id);
 
 
@@ -3428,7 +3367,7 @@ ALTER TABLE ONLY directory_entry_rev
 -- Name: directory directory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY directory
+ALTER TABLE ONLY public.directory
     ADD CONSTRAINT directory_pkey PRIMARY KEY (id);
 
 
@@ -3436,7 +3375,7 @@ ALTER TABLE ONLY directory
 -- Name: entity_equivalence entity_equivalence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY entity_equivalence
+ALTER TABLE ONLY public.entity_equivalence
     ADD CONSTRAINT entity_equivalence_pkey PRIMARY KEY (entity1, entity2);
 
 
@@ -3444,7 +3383,7 @@ ALTER TABLE ONLY entity_equivalence
 -- Name: entity_history entity_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY entity_history
+ALTER TABLE ONLY public.entity_history
     ADD CONSTRAINT entity_history_pkey PRIMARY KEY (id);
 
 
@@ -3452,7 +3391,7 @@ ALTER TABLE ONLY entity_history
 -- Name: entity entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY entity
+ALTER TABLE ONLY public.entity
     ADD CONSTRAINT entity_pkey PRIMARY KEY (uuid);
 
 
@@ -3460,7 +3399,7 @@ ALTER TABLE ONLY entity
 -- Name: fetch_history fetch_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY fetch_history
+ALTER TABLE ONLY public.fetch_history
     ADD CONSTRAINT fetch_history_pkey PRIMARY KEY (id);
 
 
@@ -3468,7 +3407,7 @@ ALTER TABLE ONLY fetch_history
 -- Name: list_history list_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY list_history
+ALTER TABLE ONLY public.list_history
     ADD CONSTRAINT list_history_pkey PRIMARY KEY (id);
 
 
@@ -3476,7 +3415,7 @@ ALTER TABLE ONLY list_history
 -- Name: listable_entity listable_entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY listable_entity
+ALTER TABLE ONLY public.listable_entity
     ADD CONSTRAINT listable_entity_pkey PRIMARY KEY (uuid);
 
 
@@ -3484,15 +3423,23 @@ ALTER TABLE ONLY listable_entity
 -- Name: metadata_provider metadata_provider_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY metadata_provider
+ALTER TABLE ONLY public.metadata_provider
     ADD CONSTRAINT metadata_provider_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: object_counts_bucketed object_counts_bucketed_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.object_counts_bucketed
+    ADD CONSTRAINT object_counts_bucketed_pkey PRIMARY KEY (line);
 
 
 --
 -- Name: object_counts object_counts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY object_counts
+ALTER TABLE ONLY public.object_counts
     ADD CONSTRAINT object_counts_pkey PRIMARY KEY (object_type);
 
 
@@ -3500,7 +3447,7 @@ ALTER TABLE ONLY object_counts
 -- Name: occurrence_history occurrence_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY occurrence_history
+ALTER TABLE ONLY public.occurrence_history
     ADD CONSTRAINT occurrence_history_pkey PRIMARY KEY (object_id);
 
 
@@ -3508,7 +3455,7 @@ ALTER TABLE ONLY occurrence_history
 -- Name: occurrence occurrence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY occurrence
+ALTER TABLE ONLY public.occurrence
     ADD CONSTRAINT occurrence_pkey PRIMARY KEY (origin, branch);
 
 
@@ -3516,7 +3463,7 @@ ALTER TABLE ONLY occurrence
 -- Name: origin_metadata origin_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_metadata
+ALTER TABLE ONLY public.origin_metadata
     ADD CONSTRAINT origin_metadata_pkey PRIMARY KEY (id);
 
 
@@ -3524,7 +3471,7 @@ ALTER TABLE ONLY origin_metadata
 -- Name: origin origin_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin
+ALTER TABLE ONLY public.origin
     ADD CONSTRAINT origin_pkey PRIMARY KEY (id);
 
 
@@ -3532,7 +3479,7 @@ ALTER TABLE ONLY origin
 -- Name: origin_visit origin_visit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_visit
+ALTER TABLE ONLY public.origin_visit
     ADD CONSTRAINT origin_visit_pkey PRIMARY KEY (origin, visit);
 
 
@@ -3540,7 +3487,7 @@ ALTER TABLE ONLY origin_visit
 -- Name: person person_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY person
+ALTER TABLE ONLY public.person
     ADD CONSTRAINT person_pkey PRIMARY KEY (id);
 
 
@@ -3548,7 +3495,7 @@ ALTER TABLE ONLY person
 -- Name: release release_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY release
+ALTER TABLE ONLY public.release
     ADD CONSTRAINT release_pkey PRIMARY KEY (id);
 
 
@@ -3556,7 +3503,7 @@ ALTER TABLE ONLY release
 -- Name: revision_history revision_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY revision_history
+ALTER TABLE ONLY public.revision_history
     ADD CONSTRAINT revision_history_pkey PRIMARY KEY (id, parent_rank);
 
 
@@ -3564,7 +3511,7 @@ ALTER TABLE ONLY revision_history
 -- Name: revision revision_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY revision
+ALTER TABLE ONLY public.revision
     ADD CONSTRAINT revision_pkey PRIMARY KEY (id);
 
 
@@ -3572,7 +3519,7 @@ ALTER TABLE ONLY revision
 -- Name: skipped_content skipped_content_sha1_sha1_git_sha256_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY skipped_content
+ALTER TABLE ONLY public.skipped_content
     ADD CONSTRAINT skipped_content_sha1_sha1_git_sha256_key UNIQUE (sha1, sha1_git, sha256);
 
 
@@ -3580,7 +3527,7 @@ ALTER TABLE ONLY skipped_content
 -- Name: snapshot_branch snapshot_branch_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY snapshot_branch
+ALTER TABLE ONLY public.snapshot_branch
     ADD CONSTRAINT snapshot_branch_pkey PRIMARY KEY (object_id);
 
 
@@ -3588,7 +3535,7 @@ ALTER TABLE ONLY snapshot_branch
 -- Name: snapshot_branches snapshot_branches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY snapshot_branches
+ALTER TABLE ONLY public.snapshot_branches
     ADD CONSTRAINT snapshot_branches_pkey PRIMARY KEY (snapshot_id, branch_id);
 
 
@@ -3596,7 +3543,7 @@ ALTER TABLE ONLY snapshot_branches
 -- Name: snapshot snapshot_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY snapshot
+ALTER TABLE ONLY public.snapshot
     ADD CONSTRAINT snapshot_pkey PRIMARY KEY (object_id);
 
 
@@ -3604,7 +3551,7 @@ ALTER TABLE ONLY snapshot
 -- Name: tool tool_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY tool
+ALTER TABLE ONLY public.tool
     ADD CONSTRAINT tool_pkey PRIMARY KEY (id);
 
 
@@ -3612,520 +3559,527 @@ ALTER TABLE ONLY tool
 -- Name: content_blake2s256_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX content_blake2s256_idx ON content USING btree (blake2s256);
+CREATE INDEX content_blake2s256_idx ON public.content USING btree (blake2s256);
 
 
 --
 -- Name: content_ctime_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX content_ctime_idx ON content USING btree (ctime);
+CREATE INDEX content_ctime_idx ON public.content USING btree (ctime);
 
 
 --
 -- Name: content_object_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX content_object_id_idx ON content USING btree (object_id);
+CREATE UNIQUE INDEX content_object_id_idx ON public.content USING btree (object_id);
 
 
 --
 -- Name: content_sha1_git_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX content_sha1_git_idx ON content USING btree (sha1_git);
+CREATE UNIQUE INDEX content_sha1_git_idx ON public.content USING btree (sha1_git);
 
 
 --
 -- Name: content_sha256_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX content_sha256_idx ON content USING btree (sha256);
+CREATE INDEX content_sha256_idx ON public.content USING btree (sha256);
 
 
 --
 -- Name: directory_dir_entries_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX directory_dir_entries_idx ON directory USING gin (dir_entries);
+CREATE INDEX directory_dir_entries_idx ON public.directory USING gin (dir_entries);
 
 
 --
 -- Name: directory_entry_dir_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX directory_entry_dir_target_name_perms_idx ON directory_entry_dir USING btree (target, name, perms);
+CREATE UNIQUE INDEX directory_entry_dir_target_name_perms_idx ON public.directory_entry_dir USING btree (target, name, perms);
 
 
 --
 -- Name: directory_entry_file_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX directory_entry_file_target_name_perms_idx ON directory_entry_file USING btree (target, name, perms);
+CREATE UNIQUE INDEX directory_entry_file_target_name_perms_idx ON public.directory_entry_file USING btree (target, name, perms);
 
 
 --
 -- Name: directory_entry_rev_target_name_perms_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_idx ON directory_entry_rev USING btree (target, name, perms);
+CREATE UNIQUE INDEX directory_entry_rev_target_name_perms_idx ON public.directory_entry_rev USING btree (target, name, perms);
 
 
 --
 -- Name: directory_file_entries_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX directory_file_entries_idx ON directory USING gin (file_entries);
+CREATE INDEX directory_file_entries_idx ON public.directory USING gin (file_entries);
 
 
 --
 -- Name: directory_object_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX directory_object_id_idx ON directory USING btree (object_id);
+CREATE UNIQUE INDEX directory_object_id_idx ON public.directory USING btree (object_id);
 
 
 --
 -- Name: directory_rev_entries_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX directory_rev_entries_idx ON directory USING gin (rev_entries);
+CREATE INDEX directory_rev_entries_idx ON public.directory USING gin (rev_entries);
 
 
 --
 -- Name: entity_history_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX entity_history_name_idx ON entity_history USING btree (name);
+CREATE INDEX entity_history_name_idx ON public.entity_history USING btree (name);
 
 
 --
 -- Name: entity_history_uuid_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX entity_history_uuid_idx ON entity_history USING btree (uuid);
+CREATE INDEX entity_history_uuid_idx ON public.entity_history USING btree (uuid);
 
 
 --
 -- Name: entity_lister_metadata_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX entity_lister_metadata_idx ON entity USING gin (lister_metadata jsonb_path_ops);
+CREATE INDEX entity_lister_metadata_idx ON public.entity USING gin (lister_metadata jsonb_path_ops);
 
 
 --
 -- Name: entity_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX entity_name_idx ON entity USING btree (name);
+CREATE INDEX entity_name_idx ON public.entity USING btree (name);
 
 
 --
 -- Name: metadata_provider_provider_name_provider_url_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX metadata_provider_provider_name_provider_url_idx ON metadata_provider USING btree (provider_name, provider_url);
+CREATE INDEX metadata_provider_provider_name_provider_url_idx ON public.metadata_provider USING btree (provider_name, provider_url);
 
 
 --
 -- Name: occurrence_history_origin_branch_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX occurrence_history_origin_branch_idx ON occurrence_history USING btree (origin, branch);
+CREATE INDEX occurrence_history_origin_branch_idx ON public.occurrence_history USING btree (origin, branch);
 
 
 --
 -- Name: occurrence_history_origin_branch_target_target_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX occurrence_history_origin_branch_target_target_type_idx ON occurrence_history USING btree (origin, branch, target, target_type);
+CREATE UNIQUE INDEX occurrence_history_origin_branch_target_target_type_idx ON public.occurrence_history USING btree (origin, branch, target, target_type);
 
 
 --
 -- Name: occurrence_history_target_target_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX occurrence_history_target_target_type_idx ON occurrence_history USING btree (target, target_type);
+CREATE INDEX occurrence_history_target_target_type_idx ON public.occurrence_history USING btree (target, target_type);
 
 
 --
 -- Name: origin_metadata_origin_id_provider_id_tool_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX origin_metadata_origin_id_provider_id_tool_id_idx ON origin_metadata USING btree (origin_id, provider_id, tool_id);
+CREATE INDEX origin_metadata_origin_id_provider_id_tool_id_idx ON public.origin_metadata USING btree (origin_id, provider_id, tool_id);
 
 
 --
 -- Name: origin_type_url_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX origin_type_url_idx ON origin USING btree (type, url);
+CREATE INDEX origin_type_url_idx ON public.origin USING btree (type, url);
 
 
 --
 -- Name: origin_visit_date_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX origin_visit_date_idx ON origin_visit USING btree (date);
+CREATE INDEX origin_visit_date_idx ON public.origin_visit USING btree (date);
 
 
 --
 -- Name: person_email_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX person_email_idx ON person USING btree (email);
+CREATE INDEX person_email_idx ON public.person USING btree (email);
 
 
 --
 -- Name: person_fullname_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX person_fullname_idx ON person USING btree (fullname);
+CREATE UNIQUE INDEX person_fullname_idx ON public.person USING btree (fullname);
 
 
 --
 -- Name: person_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX person_name_idx ON person USING btree (name);
+CREATE INDEX person_name_idx ON public.person USING btree (name);
 
 
 --
 -- Name: release_object_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX release_object_id_idx ON release USING btree (object_id);
+CREATE UNIQUE INDEX release_object_id_idx ON public.release USING btree (object_id);
 
 
 --
 -- Name: release_target_target_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX release_target_target_type_idx ON release USING btree (target, target_type);
+CREATE INDEX release_target_target_type_idx ON public.release USING btree (target, target_type);
 
 
 --
 -- Name: revision_directory_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX revision_directory_idx ON revision USING btree (directory);
+CREATE INDEX revision_directory_idx ON public.revision USING btree (directory);
 
 
 --
 -- Name: revision_history_parent_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX revision_history_parent_id_idx ON revision_history USING btree (parent_id);
+CREATE INDEX revision_history_parent_id_idx ON public.revision_history USING btree (parent_id);
 
 
 --
 -- Name: revision_object_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX revision_object_id_idx ON revision USING btree (object_id);
+CREATE UNIQUE INDEX revision_object_id_idx ON public.revision USING btree (object_id);
 
 
 --
 -- Name: skipped_content_blake2s256_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX skipped_content_blake2s256_idx ON skipped_content USING btree (blake2s256);
+CREATE INDEX skipped_content_blake2s256_idx ON public.skipped_content USING btree (blake2s256);
 
 
 --
 -- Name: skipped_content_object_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX skipped_content_object_id_idx ON skipped_content USING btree (object_id);
+CREATE UNIQUE INDEX skipped_content_object_id_idx ON public.skipped_content USING btree (object_id);
 
 
 --
 -- Name: skipped_content_sha1_git_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX skipped_content_sha1_git_idx ON skipped_content USING btree (sha1_git);
+CREATE INDEX skipped_content_sha1_git_idx ON public.skipped_content USING btree (sha1_git);
 
 
 --
 -- Name: skipped_content_sha1_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX skipped_content_sha1_idx ON skipped_content USING btree (sha1);
+CREATE INDEX skipped_content_sha1_idx ON public.skipped_content USING btree (sha1);
 
 
 --
 -- Name: skipped_content_sha256_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX skipped_content_sha256_idx ON skipped_content USING btree (sha256);
+CREATE INDEX skipped_content_sha256_idx ON public.skipped_content USING btree (sha256);
 
 
 --
 -- Name: snapshot_branch_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX snapshot_branch_name_idx ON snapshot_branch USING btree (name) WHERE ((target_type IS NULL) AND (target IS NULL));
+CREATE UNIQUE INDEX snapshot_branch_name_idx ON public.snapshot_branch USING btree (name) WHERE ((target_type IS NULL) AND (target IS NULL));
 
 
 --
 -- Name: snapshot_branch_target_type_target_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX snapshot_branch_target_type_target_name_idx ON snapshot_branch USING btree (target_type, target, name);
+CREATE UNIQUE INDEX snapshot_branch_target_type_target_name_idx ON public.snapshot_branch USING btree (target_type, target, name);
 
 
 --
 -- Name: snapshot_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX snapshot_id_idx ON snapshot USING btree (id);
+CREATE UNIQUE INDEX snapshot_id_idx ON public.snapshot USING btree (id);
 
 
 --
 -- Name: tool_name_version_configuration_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX tool_name_version_configuration_idx ON tool USING btree (name, version, configuration);
+CREATE UNIQUE INDEX tool_name_version_configuration_idx ON public.tool USING btree (name, version, configuration);
 
 
 --
 -- Name: content notify_new_content; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER notify_new_content AFTER INSERT ON content FOR EACH ROW EXECUTE PROCEDURE notify_new_content();
+CREATE TRIGGER notify_new_content AFTER INSERT ON public.content FOR EACH ROW EXECUTE PROCEDURE public.notify_new_content();
 
 
 --
 -- Name: directory notify_new_directory; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER notify_new_directory AFTER INSERT ON directory FOR EACH ROW EXECUTE PROCEDURE notify_new_directory();
+CREATE TRIGGER notify_new_directory AFTER INSERT ON public.directory FOR EACH ROW EXECUTE PROCEDURE public.notify_new_directory();
 
 
 --
 -- Name: origin notify_new_origin; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER notify_new_origin AFTER INSERT ON origin FOR EACH ROW EXECUTE PROCEDURE notify_new_origin();
+CREATE TRIGGER notify_new_origin AFTER INSERT ON public.origin FOR EACH ROW EXECUTE PROCEDURE public.notify_new_origin();
 
 
 --
 -- Name: origin_visit notify_new_origin_visit; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER notify_new_origin_visit AFTER INSERT ON origin_visit FOR EACH ROW EXECUTE PROCEDURE notify_new_origin_visit();
+CREATE TRIGGER notify_new_origin_visit AFTER INSERT ON public.origin_visit FOR EACH ROW EXECUTE PROCEDURE public.notify_new_origin_visit();
 
 
 --
 -- Name: release notify_new_release; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER notify_new_release AFTER INSERT ON release FOR EACH ROW EXECUTE PROCEDURE notify_new_release();
+CREATE TRIGGER notify_new_release AFTER INSERT ON public.release FOR EACH ROW EXECUTE PROCEDURE public.notify_new_release();
 
 
 --
 -- Name: revision notify_new_revision; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER notify_new_revision AFTER INSERT ON revision FOR EACH ROW EXECUTE PROCEDURE notify_new_revision();
+CREATE TRIGGER notify_new_revision AFTER INSERT ON public.revision FOR EACH ROW EXECUTE PROCEDURE public.notify_new_revision();
 
 
 --
 -- Name: skipped_content notify_new_skipped_content; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER notify_new_skipped_content AFTER INSERT ON skipped_content FOR EACH ROW EXECUTE PROCEDURE notify_new_skipped_content();
+CREATE TRIGGER notify_new_skipped_content AFTER INSERT ON public.skipped_content FOR EACH ROW EXECUTE PROCEDURE public.notify_new_skipped_content();
+
+
+--
+-- Name: object_counts_bucketed update_counts_from_bucketed; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_counts_from_bucketed AFTER INSERT OR UPDATE ON public.object_counts_bucketed FOR EACH ROW WHEN (((new.line % 256) = 0)) EXECUTE PROCEDURE public.swh_update_counters_from_buckets();
 
 
 --
 -- Name: entity_history update_entity; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER update_entity AFTER INSERT OR UPDATE ON entity_history FOR EACH ROW EXECUTE PROCEDURE swh_update_entity_from_entity_history();
+CREATE TRIGGER update_entity AFTER INSERT OR UPDATE ON public.entity_history FOR EACH ROW EXECUTE PROCEDURE public.swh_update_entity_from_entity_history();
 
 
 --
 -- Name: entity_equivalence entity_equivalence_entity1_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY entity_equivalence
-    ADD CONSTRAINT entity_equivalence_entity1_fkey FOREIGN KEY (entity1) REFERENCES entity(uuid);
+ALTER TABLE ONLY public.entity_equivalence
+    ADD CONSTRAINT entity_equivalence_entity1_fkey FOREIGN KEY (entity1) REFERENCES public.entity(uuid);
 
 
 --
 -- Name: entity_equivalence entity_equivalence_entity2_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY entity_equivalence
-    ADD CONSTRAINT entity_equivalence_entity2_fkey FOREIGN KEY (entity2) REFERENCES entity(uuid);
+ALTER TABLE ONLY public.entity_equivalence
+    ADD CONSTRAINT entity_equivalence_entity2_fkey FOREIGN KEY (entity2) REFERENCES public.entity(uuid);
 
 
 --
 -- Name: entity entity_last_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY entity
-    ADD CONSTRAINT entity_last_id_fkey FOREIGN KEY (last_id) REFERENCES entity_history(id);
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_last_id_fkey FOREIGN KEY (last_id) REFERENCES public.entity_history(id);
 
 
 --
 -- Name: entity entity_parent_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY entity
-    ADD CONSTRAINT entity_parent_fkey FOREIGN KEY (parent) REFERENCES entity(uuid) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_parent_fkey FOREIGN KEY (parent) REFERENCES public.entity(uuid) DEFERRABLE INITIALLY DEFERRED;
 
 
 --
 -- Name: fetch_history fetch_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY fetch_history
-    ADD CONSTRAINT fetch_history_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
+ALTER TABLE ONLY public.fetch_history
+    ADD CONSTRAINT fetch_history_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
 
 
 --
 -- Name: list_history list_history_entity_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY list_history
-    ADD CONSTRAINT list_history_entity_fkey FOREIGN KEY (entity) REFERENCES listable_entity(uuid);
+ALTER TABLE ONLY public.list_history
+    ADD CONSTRAINT list_history_entity_fkey FOREIGN KEY (entity) REFERENCES public.listable_entity(uuid);
 
 
 --
 -- Name: listable_entity listable_entity_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY listable_entity
-    ADD CONSTRAINT listable_entity_uuid_fkey FOREIGN KEY (uuid) REFERENCES entity(uuid);
+ALTER TABLE ONLY public.listable_entity
+    ADD CONSTRAINT listable_entity_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.entity(uuid);
 
 
 --
 -- Name: occurrence_history occurrence_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY occurrence_history
-    ADD CONSTRAINT occurrence_history_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
+ALTER TABLE ONLY public.occurrence_history
+    ADD CONSTRAINT occurrence_history_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
 
 
 --
 -- Name: occurrence occurrence_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY occurrence
-    ADD CONSTRAINT occurrence_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
+ALTER TABLE ONLY public.occurrence
+    ADD CONSTRAINT occurrence_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
 
 
 --
 -- Name: origin origin_lister_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin
-    ADD CONSTRAINT origin_lister_fkey FOREIGN KEY (lister) REFERENCES listable_entity(uuid);
+ALTER TABLE ONLY public.origin
+    ADD CONSTRAINT origin_lister_fkey FOREIGN KEY (lister) REFERENCES public.listable_entity(uuid);
 
 
 --
 -- Name: origin_metadata origin_metadata_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_metadata
-    ADD CONSTRAINT origin_metadata_origin_fkey FOREIGN KEY (origin_id) REFERENCES origin(id);
+ALTER TABLE ONLY public.origin_metadata
+    ADD CONSTRAINT origin_metadata_origin_fkey FOREIGN KEY (origin_id) REFERENCES public.origin(id);
 
 
 --
 -- Name: origin_metadata origin_metadata_provider_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_metadata
-    ADD CONSTRAINT origin_metadata_provider_fkey FOREIGN KEY (provider_id) REFERENCES metadata_provider(id);
+ALTER TABLE ONLY public.origin_metadata
+    ADD CONSTRAINT origin_metadata_provider_fkey FOREIGN KEY (provider_id) REFERENCES public.metadata_provider(id);
 
 
 --
 -- Name: origin_metadata origin_metadata_tool_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_metadata
-    ADD CONSTRAINT origin_metadata_tool_fkey FOREIGN KEY (tool_id) REFERENCES tool(id);
+ALTER TABLE ONLY public.origin_metadata
+    ADD CONSTRAINT origin_metadata_tool_fkey FOREIGN KEY (tool_id) REFERENCES public.tool(id);
 
 
 --
 -- Name: origin origin_project_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin
-    ADD CONSTRAINT origin_project_fkey FOREIGN KEY (project) REFERENCES entity(uuid);
+ALTER TABLE ONLY public.origin
+    ADD CONSTRAINT origin_project_fkey FOREIGN KEY (project) REFERENCES public.entity(uuid);
 
 
 --
 -- Name: origin_visit origin_visit_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_visit
-    ADD CONSTRAINT origin_visit_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
+ALTER TABLE ONLY public.origin_visit
+    ADD CONSTRAINT origin_visit_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
 
 
 --
 -- Name: origin_visit origin_visit_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_visit
-    ADD CONSTRAINT origin_visit_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES snapshot(object_id);
+ALTER TABLE ONLY public.origin_visit
+    ADD CONSTRAINT origin_visit_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES public.snapshot(object_id);
 
 
 --
 -- Name: release release_author_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY release
-    ADD CONSTRAINT release_author_fkey FOREIGN KEY (author) REFERENCES person(id);
+ALTER TABLE ONLY public.release
+    ADD CONSTRAINT release_author_fkey FOREIGN KEY (author) REFERENCES public.person(id);
 
 
 --
 -- Name: revision revision_author_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY revision
-    ADD CONSTRAINT revision_author_fkey FOREIGN KEY (author) REFERENCES person(id);
+ALTER TABLE ONLY public.revision
+    ADD CONSTRAINT revision_author_fkey FOREIGN KEY (author) REFERENCES public.person(id);
 
 
 --
 -- Name: revision revision_committer_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY revision
-    ADD CONSTRAINT revision_committer_fkey FOREIGN KEY (committer) REFERENCES person(id);
+ALTER TABLE ONLY public.revision
+    ADD CONSTRAINT revision_committer_fkey FOREIGN KEY (committer) REFERENCES public.person(id);
 
 
 --
 -- Name: revision_history revision_history_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY revision_history
-    ADD CONSTRAINT revision_history_id_fkey FOREIGN KEY (id) REFERENCES revision(id);
+ALTER TABLE ONLY public.revision_history
+    ADD CONSTRAINT revision_history_id_fkey FOREIGN KEY (id) REFERENCES public.revision(id);
 
 
 --
 -- Name: skipped_content skipped_content_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY skipped_content
-    ADD CONSTRAINT skipped_content_origin_fkey FOREIGN KEY (origin) REFERENCES origin(id);
+ALTER TABLE ONLY public.skipped_content
+    ADD CONSTRAINT skipped_content_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
 
 
 --
 -- Name: snapshot_branches snapshot_branches_branch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY snapshot_branches
-    ADD CONSTRAINT snapshot_branches_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES snapshot_branch(object_id);
+ALTER TABLE ONLY public.snapshot_branches
+    ADD CONSTRAINT snapshot_branches_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES public.snapshot_branch(object_id);
 
 
 --
 -- Name: snapshot_branches snapshot_branches_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY snapshot_branches
-    ADD CONSTRAINT snapshot_branches_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES snapshot(object_id);
+ALTER TABLE ONLY public.snapshot_branches
+    ADD CONSTRAINT snapshot_branches_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES public.snapshot(object_id);
 
 
 --

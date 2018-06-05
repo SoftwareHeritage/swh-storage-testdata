@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.3 (Debian 10.3-2)
--- Dumped by pg_dump version 10.3 (Debian 10.3-2)
+-- Dumped from database version 10.4 (Debian 10.4-2.pgdg+1)
+-- Dumped by pg_dump version 10.4 (Debian 10.4-2.pgdg+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -898,7 +898,7 @@ ALTER TABLE ONLY public.task_run ALTER COLUMN id SET DEFAULT nextval('public.tas
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-9	2018-05-29 10:44:00.587361+02	Work In Progress
+9	2018-06-05 13:57:27.989531+02	Work In Progress
 \.
 
 

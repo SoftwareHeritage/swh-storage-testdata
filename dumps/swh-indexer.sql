@@ -2,14 +2,15 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.1 (Debian 10.1-3)
--- Dumped by pg_dump version 10.1 (Debian 10.1-3)
+-- Dumped from database version 10.4 (Debian 10.4-2.pgdg+1)
+-- Dumped by pg_dump version 10.4 (Debian 10.4-2.pgdg+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
@@ -26,13 +27,6 @@ CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
 --
 
 COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
-
-
---
--- Name: plpython3u; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: -
---
-
-CREATE OR REPLACE PROCEDURAL LANGUAGE plpython3u;
 
 
 --
@@ -63,13 +57,11 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
-SET search_path = public, pg_catalog;
-
 --
 -- Name: ctags_languages; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE ctags_languages AS ENUM (
+CREATE TYPE public.ctags_languages AS ENUM (
     'Ada',
     'AnsiblePlaybook',
     'Ant',
@@ -164,14 +156,14 @@ CREATE TYPE ctags_languages AS ENUM (
 -- Name: TYPE ctags_languages; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE ctags_languages IS 'Languages recognized by ctags indexer';
+COMMENT ON TYPE public.ctags_languages IS 'Languages recognized by ctags indexer';
 
 
 --
 -- Name: sha1; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN sha1 AS bytea
+CREATE DOMAIN public.sha1 AS bytea
 	CONSTRAINT sha1_check CHECK ((length(VALUE) = 20));
 
 
@@ -179,12 +171,12 @@ CREATE DOMAIN sha1 AS bytea
 -- Name: content_ctags_signature; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE content_ctags_signature AS (
-	id sha1,
+CREATE TYPE public.content_ctags_signature AS (
+	id public.sha1,
 	name text,
 	kind text,
 	line bigint,
-	lang ctags_languages,
+	lang public.ctags_languages,
 	tool_id integer,
 	tool_name text,
 	tool_version text,
@@ -196,8 +188,8 @@ CREATE TYPE content_ctags_signature AS (
 -- Name: content_fossology_license_signature; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE content_fossology_license_signature AS (
-	id sha1,
+CREATE TYPE public.content_fossology_license_signature AS (
+	id public.sha1,
 	tool_id integer,
 	tool_name text,
 	tool_version text,
@@ -210,7 +202,7 @@ CREATE TYPE content_fossology_license_signature AS (
 -- Name: languages; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE languages AS ENUM (
+CREATE TYPE public.languages AS ENUM (
     'abap',
     'abnf',
     'actionscript',
@@ -618,16 +610,16 @@ CREATE TYPE languages AS ENUM (
 -- Name: TYPE languages; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TYPE languages IS 'Languages recognized by language indexer';
+COMMENT ON TYPE public.languages IS 'Languages recognized by language indexer';
 
 
 --
 -- Name: content_language_signature; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE content_language_signature AS (
-	id sha1,
-	lang languages,
+CREATE TYPE public.content_language_signature AS (
+	id public.sha1,
+	lang public.languages,
 	tool_id integer,
 	tool_name text,
 	tool_version text,
@@ -639,8 +631,8 @@ CREATE TYPE content_language_signature AS (
 -- Name: content_metadata_signature; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE content_metadata_signature AS (
-	id sha1,
+CREATE TYPE public.content_metadata_signature AS (
+	id public.sha1,
 	translated_metadata jsonb,
 	tool_id integer,
 	tool_name text,
@@ -653,8 +645,8 @@ CREATE TYPE content_metadata_signature AS (
 -- Name: content_mimetype_signature; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE content_mimetype_signature AS (
-	id sha1,
+CREATE TYPE public.content_mimetype_signature AS (
+	id public.sha1,
 	mimetype bytea,
 	encoding bytea,
 	tool_id integer,
@@ -668,7 +660,7 @@ CREATE TYPE content_mimetype_signature AS (
 -- Name: sha1_git; Type: DOMAIN; Schema: public; Owner: -
 --
 
-CREATE DOMAIN sha1_git AS bytea
+CREATE DOMAIN public.sha1_git AS bytea
 	CONSTRAINT sha1_git_check CHECK ((length(VALUE) = 20));
 
 
@@ -676,8 +668,8 @@ CREATE DOMAIN sha1_git AS bytea
 -- Name: revision_metadata_signature; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE revision_metadata_signature AS (
-	id sha1_git,
+CREATE TYPE public.revision_metadata_signature AS (
+	id public.sha1_git,
 	translated_metadata jsonb,
 	tool_id integer,
 	tool_name text,
@@ -690,10 +682,10 @@ CREATE TYPE revision_metadata_signature AS (
 -- Name: hash_sha1(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION hash_sha1(text) RETURNS text
+CREATE FUNCTION public.hash_sha1(text) RETURNS text
     LANGUAGE sql IMMUTABLE STRICT
     AS $_$
-select encode(digest($1, 'sha1'), 'hex')
+    select encode(public.digest($1, 'sha1'), 'hex')
 $_$;
 
 
@@ -701,14 +693,14 @@ $_$;
 -- Name: FUNCTION hash_sha1(text); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION hash_sha1(text) IS 'Compute sha1 hash as text';
+COMMENT ON FUNCTION public.hash_sha1(text) IS 'Compute sha1 hash as text';
 
 
 --
 -- Name: swh_content_ctags_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_ctags_add(conflict_update boolean) RETURNS void
+CREATE FUNCTION public.swh_content_ctags_add(conflict_update boolean) RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -733,14 +725,14 @@ $$;
 -- Name: FUNCTION swh_content_ctags_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_ctags_add(conflict_update boolean) IS 'Add new ctags symbols per content';
+COMMENT ON FUNCTION public.swh_content_ctags_add(conflict_update boolean) IS 'Add new ctags symbols per content';
 
 
 --
 -- Name: swh_content_ctags_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_ctags_get() RETURNS SETOF content_ctags_signature
+CREATE FUNCTION public.swh_content_ctags_get() RETURNS SETOF public.content_ctags_signature
     LANGUAGE plpgsql
     AS $$
 begin
@@ -760,14 +752,14 @@ $$;
 -- Name: FUNCTION swh_content_ctags_get(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_ctags_get() IS 'List content ctags';
+COMMENT ON FUNCTION public.swh_content_ctags_get() IS 'List content ctags';
 
 
 --
 -- Name: swh_content_ctags_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_ctags_missing() RETURNS SETOF sha1
+CREATE FUNCTION public.swh_content_ctags_missing() RETURNS SETOF public.sha1
     LANGUAGE plpgsql
     AS $$
 begin
@@ -786,14 +778,14 @@ $$;
 -- Name: FUNCTION swh_content_ctags_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_ctags_missing() IS 'Filter missing content ctags';
+COMMENT ON FUNCTION public.swh_content_ctags_missing() IS 'Filter missing content ctags';
 
 
 --
--- Name: swh_content_ctags_search(text, integer, sha1); Type: FUNCTION; Schema: public; Owner: -
+-- Name: swh_content_ctags_search(text, integer, public.sha1); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_ctags_search(expression text, l integer DEFAULT 10, last_sha1 sha1 DEFAULT '\x0000000000000000000000000000000000000000'::bytea) RETURNS SETOF content_ctags_signature
+CREATE FUNCTION public.swh_content_ctags_search(expression text, l integer DEFAULT 10, last_sha1 public.sha1 DEFAULT '\x0000000000000000000000000000000000000000'::bytea) RETURNS SETOF public.content_ctags_signature
     LANGUAGE sql
     AS $$
     select c.id, name, kind, line, lang,
@@ -808,17 +800,17 @@ $$;
 
 
 --
--- Name: FUNCTION swh_content_ctags_search(expression text, l integer, last_sha1 sha1); Type: COMMENT; Schema: public; Owner: -
+-- Name: FUNCTION swh_content_ctags_search(expression text, l integer, last_sha1 public.sha1); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_ctags_search(expression text, l integer, last_sha1 sha1) IS 'Equality search through ctags'' symbols';
+COMMENT ON FUNCTION public.swh_content_ctags_search(expression text, l integer, last_sha1 public.sha1) IS 'Equality search through ctags'' symbols';
 
 
 --
 -- Name: swh_content_fossology_license_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_fossology_license_add(conflict_update boolean) RETURNS void
+CREATE FUNCTION public.swh_content_fossology_license_add(conflict_update boolean) RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -854,14 +846,14 @@ $$;
 -- Name: FUNCTION swh_content_fossology_license_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_fossology_license_add(conflict_update boolean) IS 'Add new content licenses';
+COMMENT ON FUNCTION public.swh_content_fossology_license_add(conflict_update boolean) IS 'Add new content licenses';
 
 
 --
 -- Name: swh_content_fossology_license_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_fossology_license_get() RETURNS SETOF content_fossology_license_signature
+CREATE FUNCTION public.swh_content_fossology_license_get() RETURNS SETOF public.content_fossology_license_signature
     LANGUAGE plpgsql
     AS $$
 begin
@@ -887,14 +879,14 @@ $$;
 -- Name: FUNCTION swh_content_fossology_license_get(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_fossology_license_get() IS 'List content licenses';
+COMMENT ON FUNCTION public.swh_content_fossology_license_get() IS 'List content licenses';
 
 
 --
 -- Name: swh_content_language_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_language_add(conflict_update boolean) RETURNS void
+CREATE FUNCTION public.swh_content_language_add(conflict_update boolean) RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -921,14 +913,14 @@ $$;
 -- Name: FUNCTION swh_content_language_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_language_add(conflict_update boolean) IS 'Add new content languages';
+COMMENT ON FUNCTION public.swh_content_language_add(conflict_update boolean) IS 'Add new content languages';
 
 
 --
 -- Name: swh_content_language_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_language_get() RETURNS SETOF content_language_signature
+CREATE FUNCTION public.swh_content_language_get() RETURNS SETOF public.content_language_signature
     LANGUAGE plpgsql
     AS $$
 begin
@@ -946,14 +938,14 @@ $$;
 -- Name: FUNCTION swh_content_language_get(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_language_get() IS 'List content''s language';
+COMMENT ON FUNCTION public.swh_content_language_get() IS 'List content''s language';
 
 
 --
 -- Name: swh_content_language_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_language_missing() RETURNS SETOF sha1
+CREATE FUNCTION public.swh_content_language_missing() RETURNS SETOF public.sha1
     LANGUAGE plpgsql
     AS $$
 begin
@@ -971,14 +963,14 @@ $$;
 -- Name: FUNCTION swh_content_language_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_language_missing() IS 'Filter missing content languages';
+COMMENT ON FUNCTION public.swh_content_language_missing() IS 'Filter missing content languages';
 
 
 --
 -- Name: swh_content_metadata_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_metadata_add(conflict_update boolean) RETURNS void
+CREATE FUNCTION public.swh_content_metadata_add(conflict_update boolean) RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1005,14 +997,14 @@ $$;
 -- Name: FUNCTION swh_content_metadata_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_metadata_add(conflict_update boolean) IS 'Add new content metadata';
+COMMENT ON FUNCTION public.swh_content_metadata_add(conflict_update boolean) IS 'Add new content metadata';
 
 
 --
 -- Name: swh_content_metadata_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_metadata_get() RETURNS SETOF content_metadata_signature
+CREATE FUNCTION public.swh_content_metadata_get() RETURNS SETOF public.content_metadata_signature
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1030,14 +1022,14 @@ $$;
 -- Name: FUNCTION swh_content_metadata_get(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_metadata_get() IS 'List content''s metadata';
+COMMENT ON FUNCTION public.swh_content_metadata_get() IS 'List content''s metadata';
 
 
 --
 -- Name: swh_content_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_metadata_missing() RETURNS SETOF sha1
+CREATE FUNCTION public.swh_content_metadata_missing() RETURNS SETOF public.sha1
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1055,14 +1047,14 @@ $$;
 -- Name: FUNCTION swh_content_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_metadata_missing() IS 'Filter missing content metadata';
+COMMENT ON FUNCTION public.swh_content_metadata_missing() IS 'Filter missing content metadata';
 
 
 --
 -- Name: swh_content_mimetype_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_mimetype_add(conflict_update boolean) RETURNS void
+CREATE FUNCTION public.swh_content_mimetype_add(conflict_update boolean) RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1089,14 +1081,14 @@ $$;
 -- Name: FUNCTION swh_content_mimetype_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_mimetype_add(conflict_update boolean) IS 'Add new content mimetypes';
+COMMENT ON FUNCTION public.swh_content_mimetype_add(conflict_update boolean) IS 'Add new content mimetypes';
 
 
 --
 -- Name: swh_content_mimetype_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_mimetype_get() RETURNS SETOF content_mimetype_signature
+CREATE FUNCTION public.swh_content_mimetype_get() RETURNS SETOF public.content_mimetype_signature
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1115,14 +1107,14 @@ $$;
 -- Name: FUNCTION swh_content_mimetype_get(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_mimetype_get() IS 'List content''s mimetypes';
+COMMENT ON FUNCTION public.swh_content_mimetype_get() IS 'List content''s mimetypes';
 
 
 --
 -- Name: swh_content_mimetype_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_content_mimetype_missing() RETURNS SETOF sha1
+CREATE FUNCTION public.swh_content_mimetype_missing() RETURNS SETOF public.sha1
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1140,7 +1132,7 @@ $$;
 -- Name: FUNCTION swh_content_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_content_mimetype_missing() IS 'Filter existing mimetype information';
+COMMENT ON FUNCTION public.swh_content_mimetype_missing() IS 'Filter existing mimetype information';
 
 
 SET default_tablespace = '';
@@ -1151,7 +1143,7 @@ SET default_with_oids = false;
 -- Name: indexer_configuration; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE indexer_configuration (
+CREATE TABLE public.indexer_configuration (
     id integer NOT NULL,
     tool_name text NOT NULL,
     tool_version text NOT NULL,
@@ -1163,35 +1155,35 @@ CREATE TABLE indexer_configuration (
 -- Name: TABLE indexer_configuration; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE indexer_configuration IS 'Indexer''s configuration version';
+COMMENT ON TABLE public.indexer_configuration IS 'Indexer''s configuration version';
 
 
 --
 -- Name: COLUMN indexer_configuration.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN indexer_configuration.id IS 'Tool identifier';
+COMMENT ON COLUMN public.indexer_configuration.id IS 'Tool identifier';
 
 
 --
 -- Name: COLUMN indexer_configuration.tool_version; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN indexer_configuration.tool_version IS 'Tool version';
+COMMENT ON COLUMN public.indexer_configuration.tool_version IS 'Tool version';
 
 
 --
 -- Name: COLUMN indexer_configuration.tool_configuration; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN indexer_configuration.tool_configuration IS 'Tool configuration: command line, flags, etc...';
+COMMENT ON COLUMN public.indexer_configuration.tool_configuration IS 'Tool configuration: command line, flags, etc...';
 
 
 --
 -- Name: swh_indexer_configuration_add(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_indexer_configuration_add() RETURNS SETOF indexer_configuration
+CREATE FUNCTION public.swh_indexer_configuration_add() RETURNS SETOF public.indexer_configuration
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1213,7 +1205,7 @@ $$;
 -- Name: swh_mktemp(regclass); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp(tblname regclass) RETURNS void
+CREATE FUNCTION public.swh_mktemp(tblname regclass) RETURNS void
     LANGUAGE plpgsql
     AS $_$
 begin
@@ -1232,7 +1224,7 @@ $_$;
 -- Name: swh_mktemp_bytea(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_bytea() RETURNS void
+CREATE FUNCTION public.swh_mktemp_bytea() RETURNS void
     LANGUAGE sql
     AS $$
     create temporary table tmp_bytea (
@@ -1245,7 +1237,7 @@ $$;
 -- Name: swh_mktemp_content_ctags(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_ctags() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_ctags() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_ctags (
@@ -1258,14 +1250,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_ctags(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_ctags() IS 'Helper table to add content ctags';
+COMMENT ON FUNCTION public.swh_mktemp_content_ctags() IS 'Helper table to add content ctags';
 
 
 --
 -- Name: swh_mktemp_content_ctags_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_ctags_missing() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_ctags_missing() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_ctags_missing (
@@ -1279,14 +1271,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_ctags_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_ctags_missing() IS 'Helper table to filter missing content ctags';
+COMMENT ON FUNCTION public.swh_mktemp_content_ctags_missing() IS 'Helper table to filter missing content ctags';
 
 
 --
 -- Name: swh_mktemp_content_fossology_license(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_fossology_license() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_fossology_license() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_fossology_license (
@@ -1301,14 +1293,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_fossology_license(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_fossology_license() IS 'Helper table to add content license';
+COMMENT ON FUNCTION public.swh_mktemp_content_fossology_license() IS 'Helper table to add content license';
 
 
 --
 -- Name: swh_mktemp_content_language(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_language() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_language() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_language (
@@ -1321,14 +1313,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_language(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_language() IS 'Helper table to add content language';
+COMMENT ON FUNCTION public.swh_mktemp_content_language() IS 'Helper table to add content language';
 
 
 --
 -- Name: swh_mktemp_content_language_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_language_missing() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_language_missing() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_language_missing (
@@ -1342,14 +1334,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_language_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_language_missing() IS 'Helper table to filter missing language';
+COMMENT ON FUNCTION public.swh_mktemp_content_language_missing() IS 'Helper table to filter missing language';
 
 
 --
 -- Name: swh_mktemp_content_metadata(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_metadata() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_metadata() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_metadata (
@@ -1362,14 +1354,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_metadata(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_metadata() IS 'Helper table to add content metadata';
+COMMENT ON FUNCTION public.swh_mktemp_content_metadata() IS 'Helper table to add content metadata';
 
 
 --
 -- Name: swh_mktemp_content_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_metadata_missing() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_metadata_missing() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_metadata_missing (
@@ -1383,14 +1375,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_metadata_missing() IS 'Helper table to filter missing metadata in content_metadata';
+COMMENT ON FUNCTION public.swh_mktemp_content_metadata_missing() IS 'Helper table to filter missing metadata in content_metadata';
 
 
 --
 -- Name: swh_mktemp_content_mimetype(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_mimetype() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_mimetype() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_mimetype (
@@ -1403,14 +1395,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_mimetype(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_mimetype() IS 'Helper table to add mimetype information';
+COMMENT ON FUNCTION public.swh_mktemp_content_mimetype() IS 'Helper table to add mimetype information';
 
 
 --
 -- Name: swh_mktemp_content_mimetype_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_content_mimetype_missing() RETURNS void
+CREATE FUNCTION public.swh_mktemp_content_mimetype_missing() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_content_mimetype_missing (
@@ -1424,14 +1416,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_content_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_content_mimetype_missing() IS 'Helper table to filter existing mimetype information';
+COMMENT ON FUNCTION public.swh_mktemp_content_mimetype_missing() IS 'Helper table to filter existing mimetype information';
 
 
 --
 -- Name: swh_mktemp_indexer_configuration(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_indexer_configuration() RETURNS void
+CREATE FUNCTION public.swh_mktemp_indexer_configuration() RETURNS void
     LANGUAGE sql
     AS $$
     create temporary table tmp_indexer_configuration (
@@ -1445,7 +1437,7 @@ $$;
 -- Name: swh_mktemp_revision_metadata(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_revision_metadata() RETURNS void
+CREATE FUNCTION public.swh_mktemp_revision_metadata() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_revision_metadata (
@@ -1458,14 +1450,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_revision_metadata(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_revision_metadata() IS 'Helper table to add revision metadata';
+COMMENT ON FUNCTION public.swh_mktemp_revision_metadata() IS 'Helper table to add revision metadata';
 
 
 --
 -- Name: swh_mktemp_revision_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_mktemp_revision_metadata_missing() RETURNS void
+CREATE FUNCTION public.swh_mktemp_revision_metadata_missing() RETURNS void
     LANGUAGE sql
     AS $$
   create temporary table tmp_revision_metadata_missing (
@@ -1479,14 +1471,14 @@ $$;
 -- Name: FUNCTION swh_mktemp_revision_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_mktemp_revision_metadata_missing() IS 'Helper table to filter missing metadata in revision_metadata';
+COMMENT ON FUNCTION public.swh_mktemp_revision_metadata_missing() IS 'Helper table to filter missing metadata in revision_metadata';
 
 
 --
 -- Name: swh_revision_metadata_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_metadata_add(conflict_update boolean) RETURNS void
+CREATE FUNCTION public.swh_revision_metadata_add(conflict_update boolean) RETURNS void
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1513,14 +1505,14 @@ $$;
 -- Name: FUNCTION swh_revision_metadata_add(conflict_update boolean); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_revision_metadata_add(conflict_update boolean) IS 'Add new revision metadata';
+COMMENT ON FUNCTION public.swh_revision_metadata_add(conflict_update boolean) IS 'Add new revision metadata';
 
 
 --
 -- Name: swh_revision_metadata_get(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_metadata_get() RETURNS SETOF revision_metadata_signature
+CREATE FUNCTION public.swh_revision_metadata_get() RETURNS SETOF public.revision_metadata_signature
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1538,7 +1530,7 @@ $$;
 -- Name: swh_revision_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION swh_revision_metadata_missing() RETURNS SETOF sha1
+CREATE FUNCTION public.swh_revision_metadata_missing() RETURNS SETOF public.sha1
     LANGUAGE plpgsql
     AS $$
 begin
@@ -1556,19 +1548,19 @@ $$;
 -- Name: FUNCTION swh_revision_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION swh_revision_metadata_missing() IS 'Filter missing content metadata';
+COMMENT ON FUNCTION public.swh_revision_metadata_missing() IS 'Filter missing content metadata';
 
 
 --
 -- Name: content_ctags; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE content_ctags (
-    id sha1 NOT NULL,
+CREATE TABLE public.content_ctags (
+    id public.sha1 NOT NULL,
     name text NOT NULL,
     kind text NOT NULL,
     line bigint NOT NULL,
-    lang ctags_languages NOT NULL,
+    lang public.ctags_languages NOT NULL,
     indexer_configuration_id bigint NOT NULL
 );
 
@@ -1577,57 +1569,57 @@ CREATE TABLE content_ctags (
 -- Name: TABLE content_ctags; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE content_ctags IS 'Ctags information on a raw content';
+COMMENT ON TABLE public.content_ctags IS 'Ctags information on a raw content';
 
 
 --
 -- Name: COLUMN content_ctags.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_ctags.id IS 'Content identifier';
+COMMENT ON COLUMN public.content_ctags.id IS 'Content identifier';
 
 
 --
 -- Name: COLUMN content_ctags.name; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_ctags.name IS 'Symbol name';
+COMMENT ON COLUMN public.content_ctags.name IS 'Symbol name';
 
 
 --
 -- Name: COLUMN content_ctags.kind; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_ctags.kind IS 'Symbol kind (function, class, variable, const...)';
+COMMENT ON COLUMN public.content_ctags.kind IS 'Symbol kind (function, class, variable, const...)';
 
 
 --
 -- Name: COLUMN content_ctags.line; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_ctags.line IS 'Symbol line';
+COMMENT ON COLUMN public.content_ctags.line IS 'Symbol line';
 
 
 --
 -- Name: COLUMN content_ctags.lang; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_ctags.lang IS 'Language information for that content';
+COMMENT ON COLUMN public.content_ctags.lang IS 'Language information for that content';
 
 
 --
 -- Name: COLUMN content_ctags.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_ctags.indexer_configuration_id IS 'Tool used to compute the information';
+COMMENT ON COLUMN public.content_ctags.indexer_configuration_id IS 'Tool used to compute the information';
 
 
 --
 -- Name: content_fossology_license; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE content_fossology_license (
-    id sha1 NOT NULL,
+CREATE TABLE public.content_fossology_license (
+    id public.sha1 NOT NULL,
     license_id smallint NOT NULL,
     indexer_configuration_id bigint NOT NULL
 );
@@ -1637,35 +1629,35 @@ CREATE TABLE content_fossology_license (
 -- Name: TABLE content_fossology_license; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE content_fossology_license IS 'license associated to a raw content';
+COMMENT ON TABLE public.content_fossology_license IS 'license associated to a raw content';
 
 
 --
 -- Name: COLUMN content_fossology_license.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_fossology_license.id IS 'Raw content identifier';
+COMMENT ON COLUMN public.content_fossology_license.id IS 'Raw content identifier';
 
 
 --
 -- Name: COLUMN content_fossology_license.license_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_fossology_license.license_id IS 'One of the content''s license identifier';
+COMMENT ON COLUMN public.content_fossology_license.license_id IS 'One of the content''s license identifier';
 
 
 --
 -- Name: COLUMN content_fossology_license.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_fossology_license.indexer_configuration_id IS 'Tool used to compute the information';
+COMMENT ON COLUMN public.content_fossology_license.indexer_configuration_id IS 'Tool used to compute the information';
 
 
 --
 -- Name: content_fossology_license_license_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE content_fossology_license_license_id_seq
+CREATE SEQUENCE public.content_fossology_license_license_id_seq
     AS smallint
     START WITH 1
     INCREMENT BY 1
@@ -1678,16 +1670,16 @@ CREATE SEQUENCE content_fossology_license_license_id_seq
 -- Name: content_fossology_license_license_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE content_fossology_license_license_id_seq OWNED BY content_fossology_license.license_id;
+ALTER SEQUENCE public.content_fossology_license_license_id_seq OWNED BY public.content_fossology_license.license_id;
 
 
 --
 -- Name: content_language; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE content_language (
-    id sha1 NOT NULL,
-    lang languages NOT NULL,
+CREATE TABLE public.content_language (
+    id public.sha1 NOT NULL,
+    lang public.languages NOT NULL,
     indexer_configuration_id bigint NOT NULL
 );
 
@@ -1696,29 +1688,29 @@ CREATE TABLE content_language (
 -- Name: TABLE content_language; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE content_language IS 'Language information on a raw content';
+COMMENT ON TABLE public.content_language IS 'Language information on a raw content';
 
 
 --
 -- Name: COLUMN content_language.lang; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_language.lang IS 'Language information';
+COMMENT ON COLUMN public.content_language.lang IS 'Language information';
 
 
 --
 -- Name: COLUMN content_language.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_language.indexer_configuration_id IS 'Tool used to compute the information';
+COMMENT ON COLUMN public.content_language.indexer_configuration_id IS 'Tool used to compute the information';
 
 
 --
 -- Name: content_metadata; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE content_metadata (
-    id sha1 NOT NULL,
+CREATE TABLE public.content_metadata (
+    id public.sha1 NOT NULL,
     translated_metadata jsonb NOT NULL,
     indexer_configuration_id bigint NOT NULL
 );
@@ -1728,36 +1720,36 @@ CREATE TABLE content_metadata (
 -- Name: TABLE content_metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE content_metadata IS 'metadata semantically translated from a content file';
+COMMENT ON TABLE public.content_metadata IS 'metadata semantically translated from a content file';
 
 
 --
 -- Name: COLUMN content_metadata.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_metadata.id IS 'sha1 of content file';
+COMMENT ON COLUMN public.content_metadata.id IS 'sha1 of content file';
 
 
 --
 -- Name: COLUMN content_metadata.translated_metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_metadata.translated_metadata IS 'result of translation with defined format';
+COMMENT ON COLUMN public.content_metadata.translated_metadata IS 'result of translation with defined format';
 
 
 --
 -- Name: COLUMN content_metadata.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_metadata.indexer_configuration_id IS 'tool used for translation';
+COMMENT ON COLUMN public.content_metadata.indexer_configuration_id IS 'tool used for translation';
 
 
 --
 -- Name: content_mimetype; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE content_mimetype (
-    id sha1 NOT NULL,
+CREATE TABLE public.content_mimetype (
+    id public.sha1 NOT NULL,
     mimetype bytea NOT NULL,
     encoding bytea NOT NULL,
     indexer_configuration_id bigint NOT NULL
@@ -1768,35 +1760,35 @@ CREATE TABLE content_mimetype (
 -- Name: TABLE content_mimetype; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE content_mimetype IS 'Metadata associated to a raw content';
+COMMENT ON TABLE public.content_mimetype IS 'Metadata associated to a raw content';
 
 
 --
 -- Name: COLUMN content_mimetype.mimetype; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_mimetype.mimetype IS 'Raw content Mimetype';
+COMMENT ON COLUMN public.content_mimetype.mimetype IS 'Raw content Mimetype';
 
 
 --
 -- Name: COLUMN content_mimetype.encoding; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_mimetype.encoding IS 'Raw content encoding';
+COMMENT ON COLUMN public.content_mimetype.encoding IS 'Raw content encoding';
 
 
 --
 -- Name: COLUMN content_mimetype.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN content_mimetype.indexer_configuration_id IS 'Tool used to compute the information';
+COMMENT ON COLUMN public.content_mimetype.indexer_configuration_id IS 'Tool used to compute the information';
 
 
 --
 -- Name: dbversion; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE dbversion (
+CREATE TABLE public.dbversion (
     version integer NOT NULL,
     release timestamp with time zone,
     description text
@@ -1807,7 +1799,7 @@ CREATE TABLE dbversion (
 -- Name: fossology_license; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE fossology_license (
+CREATE TABLE public.fossology_license (
     id smallint NOT NULL,
     name text NOT NULL
 );
@@ -1817,28 +1809,28 @@ CREATE TABLE fossology_license (
 -- Name: TABLE fossology_license; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE fossology_license IS 'Possible license recognized by license indexer';
+COMMENT ON TABLE public.fossology_license IS 'Possible license recognized by license indexer';
 
 
 --
 -- Name: COLUMN fossology_license.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN fossology_license.id IS 'License identifier';
+COMMENT ON COLUMN public.fossology_license.id IS 'License identifier';
 
 
 --
 -- Name: COLUMN fossology_license.name; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN fossology_license.name IS 'License name';
+COMMENT ON COLUMN public.fossology_license.name IS 'License name';
 
 
 --
 -- Name: fossology_license_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE fossology_license_id_seq
+CREATE SEQUENCE public.fossology_license_id_seq
     AS smallint
     START WITH 1
     INCREMENT BY 1
@@ -1851,14 +1843,14 @@ CREATE SEQUENCE fossology_license_id_seq
 -- Name: fossology_license_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE fossology_license_id_seq OWNED BY fossology_license.id;
+ALTER SEQUENCE public.fossology_license_id_seq OWNED BY public.fossology_license.id;
 
 
 --
 -- Name: indexer_configuration_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE indexer_configuration_id_seq
+CREATE SEQUENCE public.indexer_configuration_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -1871,14 +1863,14 @@ CREATE SEQUENCE indexer_configuration_id_seq
 -- Name: indexer_configuration_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE indexer_configuration_id_seq OWNED BY indexer_configuration.id;
+ALTER SEQUENCE public.indexer_configuration_id_seq OWNED BY public.indexer_configuration.id;
 
 
 --
 -- Name: origin_metadata_translation; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE origin_metadata_translation (
+CREATE TABLE public.origin_metadata_translation (
     id bigint NOT NULL,
     result jsonb,
     tool_id bigint
@@ -1889,35 +1881,35 @@ CREATE TABLE origin_metadata_translation (
 -- Name: TABLE origin_metadata_translation; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE origin_metadata_translation IS 'keeps translated for an origin_metadata entry';
+COMMENT ON TABLE public.origin_metadata_translation IS 'keeps translated for an origin_metadata entry';
 
 
 --
 -- Name: COLUMN origin_metadata_translation.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata_translation.id IS 'the entry id in origin_metadata';
+COMMENT ON COLUMN public.origin_metadata_translation.id IS 'the entry id in origin_metadata';
 
 
 --
 -- Name: COLUMN origin_metadata_translation.result; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata_translation.result IS 'translated_metadata result after translation with tool';
+COMMENT ON COLUMN public.origin_metadata_translation.result IS 'translated_metadata result after translation with tool';
 
 
 --
 -- Name: COLUMN origin_metadata_translation.tool_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN origin_metadata_translation.tool_id IS 'tool used for translation';
+COMMENT ON COLUMN public.origin_metadata_translation.tool_id IS 'tool used for translation';
 
 
 --
 -- Name: origin_metadata_translation_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE origin_metadata_translation_id_seq
+CREATE SEQUENCE public.origin_metadata_translation_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1929,15 +1921,15 @@ CREATE SEQUENCE origin_metadata_translation_id_seq
 -- Name: origin_metadata_translation_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE origin_metadata_translation_id_seq OWNED BY origin_metadata_translation.id;
+ALTER SEQUENCE public.origin_metadata_translation_id_seq OWNED BY public.origin_metadata_translation.id;
 
 
 --
 -- Name: revision_metadata; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE revision_metadata (
-    id sha1_git NOT NULL,
+CREATE TABLE public.revision_metadata (
+    id public.sha1_git NOT NULL,
     translated_metadata jsonb NOT NULL,
     indexer_configuration_id bigint NOT NULL
 );
@@ -1947,63 +1939,63 @@ CREATE TABLE revision_metadata (
 -- Name: TABLE revision_metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON TABLE revision_metadata IS 'metadata semantically detected and translated in a revision';
+COMMENT ON TABLE public.revision_metadata IS 'metadata semantically detected and translated in a revision';
 
 
 --
 -- Name: COLUMN revision_metadata.id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN revision_metadata.id IS 'sha1_git of revision';
+COMMENT ON COLUMN public.revision_metadata.id IS 'sha1_git of revision';
 
 
 --
 -- Name: COLUMN revision_metadata.translated_metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN revision_metadata.translated_metadata IS 'result of detection and translation with defined format';
+COMMENT ON COLUMN public.revision_metadata.translated_metadata IS 'result of detection and translation with defined format';
 
 
 --
 -- Name: COLUMN revision_metadata.indexer_configuration_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN revision_metadata.indexer_configuration_id IS 'tool used for detection';
+COMMENT ON COLUMN public.revision_metadata.indexer_configuration_id IS 'tool used for detection';
 
 
 --
 -- Name: content_fossology_license license_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_fossology_license ALTER COLUMN license_id SET DEFAULT nextval('content_fossology_license_license_id_seq'::regclass);
+ALTER TABLE ONLY public.content_fossology_license ALTER COLUMN license_id SET DEFAULT nextval('public.content_fossology_license_license_id_seq'::regclass);
 
 
 --
 -- Name: fossology_license id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY fossology_license ALTER COLUMN id SET DEFAULT nextval('fossology_license_id_seq'::regclass);
+ALTER TABLE ONLY public.fossology_license ALTER COLUMN id SET DEFAULT nextval('public.fossology_license_id_seq'::regclass);
 
 
 --
 -- Name: indexer_configuration id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY indexer_configuration ALTER COLUMN id SET DEFAULT nextval('indexer_configuration_id_seq'::regclass);
+ALTER TABLE ONLY public.indexer_configuration ALTER COLUMN id SET DEFAULT nextval('public.indexer_configuration_id_seq'::regclass);
 
 
 --
 -- Name: origin_metadata_translation id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY origin_metadata_translation ALTER COLUMN id SET DEFAULT nextval('origin_metadata_translation_id_seq'::regclass);
+ALTER TABLE ONLY public.origin_metadata_translation ALTER COLUMN id SET DEFAULT nextval('public.origin_metadata_translation_id_seq'::regclass);
 
 
 --
 -- Data for Name: content_ctags; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_ctags (id, name, kind, line, lang, indexer_configuration_id) FROM stdin;
+COPY public.content_ctags (id, name, kind, line, lang, indexer_configuration_id) FROM stdin;
 \.
 
 
@@ -2011,7 +2003,7 @@ COPY content_ctags (id, name, kind, line, lang, indexer_configuration_id) FROM s
 -- Data for Name: content_fossology_license; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_fossology_license (id, license_id, indexer_configuration_id) FROM stdin;
+COPY public.content_fossology_license (id, license_id, indexer_configuration_id) FROM stdin;
 \.
 
 
@@ -2019,7 +2011,7 @@ COPY content_fossology_license (id, license_id, indexer_configuration_id) FROM s
 -- Data for Name: content_language; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_language (id, lang, indexer_configuration_id) FROM stdin;
+COPY public.content_language (id, lang, indexer_configuration_id) FROM stdin;
 \.
 
 
@@ -2027,7 +2019,7 @@ COPY content_language (id, lang, indexer_configuration_id) FROM stdin;
 -- Data for Name: content_metadata; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_metadata (id, translated_metadata, indexer_configuration_id) FROM stdin;
+COPY public.content_metadata (id, translated_metadata, indexer_configuration_id) FROM stdin;
 \.
 
 
@@ -2035,7 +2027,7 @@ COPY content_metadata (id, translated_metadata, indexer_configuration_id) FROM s
 -- Data for Name: content_mimetype; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY content_mimetype (id, mimetype, encoding, indexer_configuration_id) FROM stdin;
+COPY public.content_mimetype (id, mimetype, encoding, indexer_configuration_id) FROM stdin;
 \.
 
 
@@ -2043,8 +2035,8 @@ COPY content_mimetype (id, mimetype, encoding, indexer_configuration_id) FROM st
 -- Data for Name: dbversion; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY dbversion (version, release, description) FROM stdin;
-114	2018-02-06 14:11:21.710655+01	Work In Progress
+COPY public.dbversion (version, release, description) FROM stdin;
+114	2018-06-05 13:57:28.624707+02	Work In Progress
 \.
 
 
@@ -2052,7 +2044,7 @@ COPY dbversion (version, release, description) FROM stdin;
 -- Data for Name: fossology_license; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY fossology_license (id, name) FROM stdin;
+COPY public.fossology_license (id, name) FROM stdin;
 \.
 
 
@@ -2060,7 +2052,7 @@ COPY fossology_license (id, name) FROM stdin;
 -- Data for Name: indexer_configuration; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FROM stdin;
+COPY public.indexer_configuration (id, tool_name, tool_version, tool_configuration) FROM stdin;
 1	nomos	3.1.0rc2-31-ga2cbb8c	{"command_line": "nomossa <filepath>"}
 2	file	5.22	{"command_line": "file --mime <filepath>"}
 3	universal-ctags	~git7859817b	{"command_line": "ctags --fields=+lnz --sort=no --links=no --output-format=json <filepath>"}
@@ -2077,7 +2069,7 @@ COPY indexer_configuration (id, tool_name, tool_version, tool_configuration) FRO
 -- Data for Name: origin_metadata_translation; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY origin_metadata_translation (id, result, tool_id) FROM stdin;
+COPY public.origin_metadata_translation (id, result, tool_id) FROM stdin;
 \.
 
 
@@ -2085,7 +2077,7 @@ COPY origin_metadata_translation (id, result, tool_id) FROM stdin;
 -- Data for Name: revision_metadata; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY revision_metadata (id, translated_metadata, indexer_configuration_id) FROM stdin;
+COPY public.revision_metadata (id, translated_metadata, indexer_configuration_id) FROM stdin;
 \.
 
 
@@ -2093,35 +2085,35 @@ COPY revision_metadata (id, translated_metadata, indexer_configuration_id) FROM 
 -- Name: content_fossology_license_license_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('content_fossology_license_license_id_seq', 1, false);
+SELECT pg_catalog.setval('public.content_fossology_license_license_id_seq', 1, false);
 
 
 --
 -- Name: fossology_license_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('fossology_license_id_seq', 1, false);
+SELECT pg_catalog.setval('public.fossology_license_id_seq', 1, false);
 
 
 --
 -- Name: indexer_configuration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('indexer_configuration_id_seq', 9, true);
+SELECT pg_catalog.setval('public.indexer_configuration_id_seq', 9, true);
 
 
 --
 -- Name: origin_metadata_translation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('origin_metadata_translation_id_seq', 1, false);
+SELECT pg_catalog.setval('public.origin_metadata_translation_id_seq', 1, false);
 
 
 --
 -- Name: content_fossology_license content_fossology_license_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_fossology_license
+ALTER TABLE ONLY public.content_fossology_license
     ADD CONSTRAINT content_fossology_license_pkey PRIMARY KEY (id, license_id, indexer_configuration_id);
 
 
@@ -2129,7 +2121,7 @@ ALTER TABLE ONLY content_fossology_license
 -- Name: content_language content_language_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_language
+ALTER TABLE ONLY public.content_language
     ADD CONSTRAINT content_language_pkey PRIMARY KEY (id, indexer_configuration_id);
 
 
@@ -2137,7 +2129,7 @@ ALTER TABLE ONLY content_language
 -- Name: content_metadata content_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_metadata
+ALTER TABLE ONLY public.content_metadata
     ADD CONSTRAINT content_metadata_pkey PRIMARY KEY (id, indexer_configuration_id);
 
 
@@ -2145,7 +2137,7 @@ ALTER TABLE ONLY content_metadata
 -- Name: content_mimetype content_mimetype_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_mimetype
+ALTER TABLE ONLY public.content_mimetype
     ADD CONSTRAINT content_mimetype_pkey PRIMARY KEY (id, indexer_configuration_id);
 
 
@@ -2153,7 +2145,7 @@ ALTER TABLE ONLY content_mimetype
 -- Name: dbversion dbversion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY dbversion
+ALTER TABLE ONLY public.dbversion
     ADD CONSTRAINT dbversion_pkey PRIMARY KEY (version);
 
 
@@ -2161,7 +2153,7 @@ ALTER TABLE ONLY dbversion
 -- Name: fossology_license fossology_license_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY fossology_license
+ALTER TABLE ONLY public.fossology_license
     ADD CONSTRAINT fossology_license_pkey PRIMARY KEY (id);
 
 
@@ -2169,7 +2161,7 @@ ALTER TABLE ONLY fossology_license
 -- Name: indexer_configuration indexer_configuration_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY indexer_configuration
+ALTER TABLE ONLY public.indexer_configuration
     ADD CONSTRAINT indexer_configuration_pkey PRIMARY KEY (id);
 
 
@@ -2177,7 +2169,7 @@ ALTER TABLE ONLY indexer_configuration
 -- Name: revision_metadata revision_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY revision_metadata
+ALTER TABLE ONLY public.revision_metadata
     ADD CONSTRAINT revision_metadata_pkey PRIMARY KEY (id, indexer_configuration_id);
 
 
@@ -2185,91 +2177,91 @@ ALTER TABLE ONLY revision_metadata
 -- Name: content_ctags_hash_sha1_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX content_ctags_hash_sha1_idx ON content_ctags USING btree (hash_sha1(name));
+CREATE INDEX content_ctags_hash_sha1_idx ON public.content_ctags USING btree (public.hash_sha1(name));
 
 
 --
 -- Name: content_ctags_id_hash_sha1_kind_line_lang_indexer_configura_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX content_ctags_id_hash_sha1_kind_line_lang_indexer_configura_idx ON content_ctags USING btree (id, hash_sha1(name), kind, line, lang, indexer_configuration_id);
+CREATE UNIQUE INDEX content_ctags_id_hash_sha1_kind_line_lang_indexer_configura_idx ON public.content_ctags USING btree (id, public.hash_sha1(name), kind, line, lang, indexer_configuration_id);
 
 
 --
 -- Name: content_ctags_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX content_ctags_id_idx ON content_ctags USING btree (id);
+CREATE INDEX content_ctags_id_idx ON public.content_ctags USING btree (id);
 
 
 --
 -- Name: fossology_license_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX fossology_license_name_idx ON fossology_license USING btree (name);
+CREATE UNIQUE INDEX fossology_license_name_idx ON public.fossology_license USING btree (name);
 
 
 --
 -- Name: indexer_configuration_tool_name_tool_version_tool_configura_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX indexer_configuration_tool_name_tool_version_tool_configura_idx ON indexer_configuration USING btree (tool_name, tool_version, tool_configuration);
+CREATE UNIQUE INDEX indexer_configuration_tool_name_tool_version_tool_configura_idx ON public.indexer_configuration USING btree (tool_name, tool_version, tool_configuration);
 
 
 --
 -- Name: content_ctags content_ctags_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_ctags
-    ADD CONSTRAINT content_ctags_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
+ALTER TABLE ONLY public.content_ctags
+    ADD CONSTRAINT content_ctags_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES public.indexer_configuration(id);
 
 
 --
 -- Name: content_fossology_license content_fossology_license_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_fossology_license
-    ADD CONSTRAINT content_fossology_license_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
+ALTER TABLE ONLY public.content_fossology_license
+    ADD CONSTRAINT content_fossology_license_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES public.indexer_configuration(id);
 
 
 --
 -- Name: content_fossology_license content_fossology_license_license_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_fossology_license
-    ADD CONSTRAINT content_fossology_license_license_id_fkey FOREIGN KEY (license_id) REFERENCES fossology_license(id);
+ALTER TABLE ONLY public.content_fossology_license
+    ADD CONSTRAINT content_fossology_license_license_id_fkey FOREIGN KEY (license_id) REFERENCES public.fossology_license(id);
 
 
 --
 -- Name: content_language content_language_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_language
-    ADD CONSTRAINT content_language_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
+ALTER TABLE ONLY public.content_language
+    ADD CONSTRAINT content_language_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES public.indexer_configuration(id);
 
 
 --
 -- Name: content_metadata content_metadata_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_metadata
-    ADD CONSTRAINT content_metadata_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
+ALTER TABLE ONLY public.content_metadata
+    ADD CONSTRAINT content_metadata_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES public.indexer_configuration(id);
 
 
 --
 -- Name: content_mimetype content_mimetype_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY content_mimetype
-    ADD CONSTRAINT content_mimetype_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
+ALTER TABLE ONLY public.content_mimetype
+    ADD CONSTRAINT content_mimetype_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES public.indexer_configuration(id);
 
 
 --
 -- Name: revision_metadata revision_metadata_indexer_configuration_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY revision_metadata
-    ADD CONSTRAINT revision_metadata_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES indexer_configuration(id);
+ALTER TABLE ONLY public.revision_metadata
+    ADD CONSTRAINT revision_metadata_indexer_configuration_id_fkey FOREIGN KEY (indexer_configuration_id) REFERENCES public.indexer_configuration(id);
 
 
 --
