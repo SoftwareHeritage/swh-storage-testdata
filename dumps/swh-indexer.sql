@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.4 (Debian 10.4-2.pgdg+1)
--- Dumped by pg_dump version 10.4 (Debian 10.4-2.pgdg+1)
+-- Dumped from database version 10.4 (Debian 10.4-2)
+-- Dumped by pg_dump version 10.4 (Debian 10.4-2)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -181,20 +181,6 @@ CREATE TYPE public.content_ctags_signature AS (
 	tool_name text,
 	tool_version text,
 	tool_configuration jsonb
-);
-
-
---
--- Name: content_fossology_license_signature; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.content_fossology_license_signature AS (
-	id public.sha1,
-	tool_id integer,
-	tool_name text,
-	tool_version text,
-	tool_configuration jsonb,
-	licenses text[]
 );
 
 
@@ -614,68 +600,11 @@ COMMENT ON TYPE public.languages IS 'Languages recognized by language indexer';
 
 
 --
--- Name: content_language_signature; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.content_language_signature AS (
-	id public.sha1,
-	lang public.languages,
-	tool_id integer,
-	tool_name text,
-	tool_version text,
-	tool_configuration jsonb
-);
-
-
---
--- Name: content_metadata_signature; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.content_metadata_signature AS (
-	id public.sha1,
-	translated_metadata jsonb,
-	tool_id integer,
-	tool_name text,
-	tool_version text,
-	tool_configuration jsonb
-);
-
-
---
--- Name: content_mimetype_signature; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.content_mimetype_signature AS (
-	id public.sha1,
-	mimetype bytea,
-	encoding bytea,
-	tool_id integer,
-	tool_name text,
-	tool_version text,
-	tool_configuration jsonb
-);
-
-
---
 -- Name: sha1_git; Type: DOMAIN; Schema: public; Owner: -
 --
 
 CREATE DOMAIN public.sha1_git AS bytea
 	CONSTRAINT sha1_git_check CHECK ((length(VALUE) = 20));
-
-
---
--- Name: revision_metadata_signature; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.revision_metadata_signature AS (
-	id public.sha1_git,
-	translated_metadata jsonb,
-	tool_id integer,
-	tool_name text,
-	tool_version text,
-	tool_configuration jsonb
-);
 
 
 --
@@ -726,59 +655,6 @@ $$;
 --
 
 COMMENT ON FUNCTION public.swh_content_ctags_add(conflict_update boolean) IS 'Add new ctags symbols per content';
-
-
---
--- Name: swh_content_ctags_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_ctags_get() RETURNS SETOF public.content_ctags_signature
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select c.id, c.name, c.kind, c.line, c.lang,
-               i.id as tool_id, i.tool_name, i.tool_version, i.tool_configuration
-        from tmp_bytea t
-        inner join content_ctags c using(id)
-        inner join indexer_configuration i on i.id = c.indexer_configuration_id
-        order by line;
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_ctags_get(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_ctags_get() IS 'List content ctags';
-
-
---
--- Name: swh_content_ctags_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_ctags_missing() RETURNS SETOF public.sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	(select id::sha1 from tmp_content_ctags_missing as tmp
-	 where not exists
-	     (select 1 from content_ctags as c
-              where c.id = tmp.id and c.indexer_configuration_id=tmp.indexer_configuration_id
-              limit 1));
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_ctags_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_ctags_missing() IS 'Filter missing content ctags';
 
 
 --
@@ -850,39 +726,6 @@ COMMENT ON FUNCTION public.swh_content_fossology_license_add(conflict_update boo
 
 
 --
--- Name: swh_content_fossology_license_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_fossology_license_get() RETURNS SETOF public.content_fossology_license_signature
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-      select cl.id,
-             ic.id as tool_id,
-             ic.tool_name,
-             ic.tool_version,
-             ic.tool_configuration,
-             array(select name
-                   from fossology_license
-                   where id = ANY(array_agg(cl.license_id))) as licenses
-      from tmp_bytea tcl
-      inner join content_fossology_license cl using(id)
-      inner join indexer_configuration ic on ic.id=cl.indexer_configuration_id
-      group by cl.id, ic.id, ic.tool_name, ic.tool_version, ic.tool_configuration;
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_fossology_license_get(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_fossology_license_get() IS 'List content licenses';
-
-
---
 -- Name: swh_content_language_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -914,56 +757,6 @@ $$;
 --
 
 COMMENT ON FUNCTION public.swh_content_language_add(conflict_update boolean) IS 'Add new content languages';
-
-
---
--- Name: swh_content_language_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_language_get() RETURNS SETOF public.content_language_signature
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select c.id, lang, i.id as tool_id, tool_name, tool_version, tool_configuration
-        from tmp_bytea t
-        inner join content_language c on c.id = t.id
-        inner join indexer_configuration i on i.id=c.indexer_configuration_id;
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_language_get(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_language_get() IS 'List content''s language';
-
-
---
--- Name: swh_content_language_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_language_missing() RETURNS SETOF public.sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	select id::sha1 from tmp_content_language_missing as tmp
-	where not exists
-	    (select 1 from content_language as c
-             where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id);
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_language_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_language_missing() IS 'Filter missing content languages';
 
 
 --
@@ -1001,56 +794,6 @@ COMMENT ON FUNCTION public.swh_content_metadata_add(conflict_update boolean) IS 
 
 
 --
--- Name: swh_content_metadata_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_metadata_get() RETURNS SETOF public.content_metadata_signature
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select c.id, translated_metadata, i.id as tool_id, tool_name, tool_version, tool_configuration
-        from tmp_bytea t
-        inner join content_metadata c on c.id = t.id
-        inner join indexer_configuration i on i.id=c.indexer_configuration_id;
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_metadata_get(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_metadata_get() IS 'List content''s metadata';
-
-
---
--- Name: swh_content_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_metadata_missing() RETURNS SETOF public.sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	select id::sha1 from tmp_content_metadata_missing as tmp
-	where not exists
-	    (select 1 from content_metadata as c
-             where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id);
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_metadata_missing() IS 'Filter missing content metadata';
-
-
---
 -- Name: swh_content_mimetype_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1082,57 +825,6 @@ $$;
 --
 
 COMMENT ON FUNCTION public.swh_content_mimetype_add(conflict_update boolean) IS 'Add new content mimetypes';
-
-
---
--- Name: swh_content_mimetype_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_mimetype_get() RETURNS SETOF public.content_mimetype_signature
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select c.id, mimetype, encoding,
-               i.id as tool_id, tool_name, tool_version, tool_configuration
-        from tmp_bytea t
-        inner join content_mimetype c on c.id=t.id
-        inner join indexer_configuration i on c.indexer_configuration_id=i.id;
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_mimetype_get(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_mimetype_get() IS 'List content''s mimetypes';
-
-
---
--- Name: swh_content_mimetype_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_content_mimetype_missing() RETURNS SETOF public.sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	(select id::sha1 from tmp_content_mimetype_missing as tmp
-	 where not exists
-	     (select 1 from content_mimetype as c
-              where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id));
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_content_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_content_mimetype_missing() IS 'Filter existing mimetype information';
 
 
 SET default_tablespace = '';
@@ -1221,19 +913,6 @@ $_$;
 
 
 --
--- Name: swh_mktemp_bytea(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_mktemp_bytea() RETURNS void
-    LANGUAGE sql
-    AS $$
-    create temporary table tmp_bytea (
-      id bytea
-    ) on commit drop;
-$$;
-
-
---
 -- Name: swh_mktemp_content_ctags(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1251,27 +930,6 @@ $$;
 --
 
 COMMENT ON FUNCTION public.swh_mktemp_content_ctags() IS 'Helper table to add content ctags';
-
-
---
--- Name: swh_mktemp_content_ctags_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_mktemp_content_ctags_missing() RETURNS void
-    LANGUAGE sql
-    AS $$
-  create temporary table tmp_content_ctags_missing (
-    id           sha1,
-    indexer_configuration_id    integer
-  ) on commit drop;
-$$;
-
-
---
--- Name: FUNCTION swh_mktemp_content_ctags_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_mktemp_content_ctags_missing() IS 'Helper table to filter missing content ctags';
 
 
 --
@@ -1317,27 +975,6 @@ COMMENT ON FUNCTION public.swh_mktemp_content_language() IS 'Helper table to add
 
 
 --
--- Name: swh_mktemp_content_language_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_mktemp_content_language_missing() RETURNS void
-    LANGUAGE sql
-    AS $$
-  create temporary table tmp_content_language_missing (
-    id sha1,
-    indexer_configuration_id integer
-  ) on commit drop;
-$$;
-
-
---
--- Name: FUNCTION swh_mktemp_content_language_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_mktemp_content_language_missing() IS 'Helper table to filter missing language';
-
-
---
 -- Name: swh_mktemp_content_metadata(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1358,27 +995,6 @@ COMMENT ON FUNCTION public.swh_mktemp_content_metadata() IS 'Helper table to add
 
 
 --
--- Name: swh_mktemp_content_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_mktemp_content_metadata_missing() RETURNS void
-    LANGUAGE sql
-    AS $$
-  create temporary table tmp_content_metadata_missing (
-    id sha1,
-    indexer_configuration_id integer
-  ) on commit drop;
-$$;
-
-
---
--- Name: FUNCTION swh_mktemp_content_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_mktemp_content_metadata_missing() IS 'Helper table to filter missing metadata in content_metadata';
-
-
---
 -- Name: swh_mktemp_content_mimetype(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1396,27 +1012,6 @@ $$;
 --
 
 COMMENT ON FUNCTION public.swh_mktemp_content_mimetype() IS 'Helper table to add mimetype information';
-
-
---
--- Name: swh_mktemp_content_mimetype_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_mktemp_content_mimetype_missing() RETURNS void
-    LANGUAGE sql
-    AS $$
-  create temporary table tmp_content_mimetype_missing (
-    id sha1,
-    indexer_configuration_id bigint
-  ) on commit drop;
-$$;
-
-
---
--- Name: FUNCTION swh_mktemp_content_mimetype_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_mktemp_content_mimetype_missing() IS 'Helper table to filter existing mimetype information';
 
 
 --
@@ -1454,27 +1049,6 @@ COMMENT ON FUNCTION public.swh_mktemp_revision_metadata() IS 'Helper table to ad
 
 
 --
--- Name: swh_mktemp_revision_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_mktemp_revision_metadata_missing() RETURNS void
-    LANGUAGE sql
-    AS $$
-  create temporary table tmp_revision_metadata_missing (
-    id sha1_git,
-    indexer_configuration_id integer
-  ) on commit drop;
-$$;
-
-
---
--- Name: FUNCTION swh_mktemp_revision_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_mktemp_revision_metadata_missing() IS 'Helper table to filter missing metadata in revision_metadata';
-
-
---
 -- Name: swh_revision_metadata_add(boolean); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1506,49 +1080,6 @@ $$;
 --
 
 COMMENT ON FUNCTION public.swh_revision_metadata_add(conflict_update boolean) IS 'Add new revision metadata';
-
-
---
--- Name: swh_revision_metadata_get(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_revision_metadata_get() RETURNS SETOF public.revision_metadata_signature
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-        select c.id, translated_metadata, i.id as tool_id, tool_name, tool_version, tool_configuration
-        from tmp_bytea t
-        inner join revision_metadata c on c.id = t.id
-        inner join indexer_configuration i on i.id=c.indexer_configuration_id;
-    return;
-end
-$$;
-
-
---
--- Name: swh_revision_metadata_missing(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_revision_metadata_missing() RETURNS SETOF public.sha1
-    LANGUAGE plpgsql
-    AS $$
-begin
-    return query
-	select id::sha1 from tmp_revision_metadata_missing as tmp
-	where not exists
-	    (select 1 from revision_metadata as c
-             where c.id = tmp.id and c.indexer_configuration_id = tmp.indexer_configuration_id);
-    return;
-end
-$$;
-
-
---
--- Name: FUNCTION swh_revision_metadata_missing(); Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON FUNCTION public.swh_revision_metadata_missing() IS 'Filter missing content metadata';
 
 
 --
@@ -2036,7 +1567,7 @@ COPY public.content_mimetype (id, mimetype, encoding, indexer_configuration_id) 
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-114	2018-06-05 13:57:28.624707+02	Work In Progress
+115	2018-06-22 18:02:38.144382+02	Work In Progress
 \.
 
 
