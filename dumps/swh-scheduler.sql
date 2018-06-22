@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.4 (Debian 10.4-2.pgdg+1)
--- Dumped by pg_dump version 10.4 (Debian 10.4-2.pgdg+1)
+-- Dumped from database version 10.4 (Debian 10.4-2)
+-- Dumped by pg_dump version 10.4 (Debian 10.4-2)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -65,6 +65,28 @@ COMMENT ON TYPE public.task_priority IS 'Priority of the given task';
 
 
 --
+-- Name: task_run_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.task_run_status AS ENUM (
+    'scheduled',
+    'started',
+    'eventful',
+    'uneventful',
+    'failed',
+    'permfailed',
+    'lost'
+);
+
+
+--
+-- Name: TYPE task_run_status; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TYPE public.task_run_status IS 'Status of a given task run';
+
+
+--
 -- Name: task_status; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -98,30 +120,9 @@ CREATE TYPE public.task_record AS (
 	metadata jsonb,
 	scheduled timestamp with time zone,
 	started timestamp with time zone,
-	ended timestamp with time zone
+	ended timestamp with time zone,
+	task_run_status public.task_run_status
 );
-
-
---
--- Name: task_run_status; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.task_run_status AS ENUM (
-    'scheduled',
-    'started',
-    'eventful',
-    'uneventful',
-    'failed',
-    'permfailed',
-    'lost'
-);
-
-
---
--- Name: TYPE task_run_status; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TYPE public.task_run_status IS 'Status of a given task run';
 
 
 SET default_tablespace = '';
@@ -607,13 +608,13 @@ CREATE FUNCTION public.swh_scheduler_task_to_archive(ts_after timestamp with tim
    select t.id as task_id, t.policy as task_policy,
           t.status as task_status, tr.id as task_run_id,
           t.arguments, t.type, tr.backend_id, tr.metadata,
-          tr.scheduled, tr.started, tr.ended
+          tr.scheduled, tr.started, tr.ended, tr.status as task_run_status
    from task_run tr inner join task t on tr.task=t.id
-   where ((t.policy = 'oneshot' and t.status ='completed') or
-          (t.policy = 'recurring' and t.status ='disabled')) and
-          ts_after <= tr.ended  and tr.ended < ts_before and
+   where ((t.policy = 'oneshot' and t.status in ('completed', 'disabled')) or
+          (t.policy = 'recurring' and t.status = 'disabled')) and
+          ((ts_after <= tr.started and tr.started < ts_before) or tr.started is null) and
           t.id > last_id
-   order by tr.task, tr.ended
+   order by tr.task, tr.started
    limit lim;
 $$;
 
@@ -898,7 +899,7 @@ ALTER TABLE ONLY public.task_run ALTER COLUMN id SET DEFAULT nextval('public.tas
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-9	2018-06-05 13:57:27.989531+02	Work In Progress
+10	2018-06-22 18:02:37.620006+02	Work In Progress
 \.
 
 
@@ -1037,7 +1038,7 @@ CREATE INDEX task_run_backend_id_idx ON public.task_run USING btree (backend_id)
 -- Name: task_run_id_asc_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX task_run_id_asc_idx ON public.task_run USING btree (task, ended);
+CREATE INDEX task_run_id_asc_idx ON public.task_run USING btree (task, started);
 
 
 --
