@@ -204,21 +204,39 @@ CREATE FUNCTION public.swh_scheduler_create_tasks_from_temp() RETURNS SETOF publ
     LANGUAGE plpgsql
     AS $$
 begin
+  -- update the default values in one go
+  -- this is separated from the insert/select to avoid too much
+  -- juggling
+  update tmp_task t
+  set current_interval = tt.default_interval,
+      retries_left = coalesce(retries_left, tt.num_retries, 0)
+  from task_type tt
+  where tt.type=t.type;
+
+  insert into task (type, arguments, next_run, status, current_interval, policy,
+                    retries_left, priority)
+    select type, arguments, next_run, status, current_interval, policy,
+           retries_left, priority
+    from tmp_task t
+    where not exists(select 1
+                     from task
+                     where type = t.type and
+                           arguments = t.arguments and
+                           policy = t.policy and
+                           ((priority is null and t.priority is null)
+                            or priority = t.priority) and
+                           status = t.status);
+
   return query
-  insert into task (type, arguments, next_run, status, current_interval, policy, retries_left, priority)
-    select type, arguments, next_run, 'next_run_not_scheduled',
-           (select default_interval from task_type tt where tt.type = t.type),
-           coalesce(policy, 'recurring'),
-           coalesce(retries_left, (select num_retries from task_type tt where tt.type = t.type), 0),
-           coalesce(priority, null)
-      from tmp_task t
-      where not exists(select 1
-                       from task
-                       where type=t.type and
-                             arguments=t.arguments and
-                             policy=t.policy and
-                             status='next_run_not_scheduled')
-  returning task.*;
+    select distinct t.*
+    from tmp_task tt inner join task t on (
+      t.type = tt.type and
+      t.arguments = tt.arguments and
+      t.status = tt.status and
+      ((t.priority is null and tt.priority is null)
+       or t.priority=tt.priority) and
+       t.policy=tt.policy
+    );
 end;
 $$;
 
@@ -345,11 +363,8 @@ CREATE FUNCTION public.swh_scheduler_mktemp_task() RETURNS void
     like task excluding indexes
   ) on commit drop;
   alter table tmp_task
-    drop column id,
-    drop column current_interval,
-    drop column status,
-    alter column policy drop not null,
-    alter column retries_left drop not null;
+    alter column retries_left drop not null,
+    drop column id;
 $$;
 
 
@@ -899,7 +914,7 @@ ALTER TABLE ONLY public.task_run ALTER COLUMN id SET DEFAULT nextval('public.tas
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-10	2018-06-22 18:02:37.620006+02	Work In Progress
+11	2018-07-31 11:54:10.392337+02	Work In Progress
 \.
 
 
@@ -942,6 +957,11 @@ swh-vault-cooking	Cook a Vault bundle	swh.vault.cooking_tasks.SWHCookingTask	1 d
 origin-load-hg	Loading mercurial repository swh-loader-mercurial	swh.loader.mercurial.tasks.LoadMercurialTsk	1 day	1 day	1 day	1	1000	\N	\N
 origin-load-archive-hg	Loading archive mercurial repository swh-loader-mercurial	swh.loader.mercurial.tasks.LoadArchiveMercurialTsk	1 day	1 day	1 day	1	1000	\N	\N
 origin-update-git	Update an origin of type git	swh.loader.git.tasks.UpdateGitRepository	64 days	12:00:00	64 days	2	100000	\N	\N
+swh-lister-github-incremental	Incrementally list GitHub	swh.lister.github.tasks.IncrementalGitHubLister	1 day	1 day	1 day	1	\N	\N	\N
+swh-lister-github-full	Full update of GitHub repos list	swh.lister.github.tasks.FullGitHubRelister	90 days	90 days	90 days	1	\N	\N	\N
+swh-lister-debian	List a Debian distribution	swh.lister.debian.tasks.DebianListerTask	1 day	1 day	1 day	1	\N	\N	\N
+swh-lister-gitlab-incremental	Incrementally list a Gitlab instance	swh.lister.gitlab.tasks.IncrementalGitLabLister	1 day	1 day	1 day	1	\N	\N	\N
+swh-lister-gitlab-full	Full update of a Gitlab instance's repos list	swh.lister.gitlab.tasks.FullGitLabRelister	90 days	90 days	90 days	1	\N	\N	\N
 \.
 
 
