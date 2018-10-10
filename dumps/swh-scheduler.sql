@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.4 (Debian 10.4-2)
--- Dumped by pg_dump version 10.4 (Debian 10.4-2)
+-- Dumped from database version 10.5 (Debian 10.5-1.pgdg+1)
+-- Dumped by pg_dump version 10.5 (Debian 10.5-1.pgdg+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -221,21 +221,21 @@ begin
     where not exists(select 1
                      from task
                      where type = t.type and
-                           arguments = t.arguments and
+                           arguments->'args' = t.arguments->'args' and
+                           arguments->'kwargs' = t.arguments->'kwargs' and
                            policy = t.policy and
-                           ((priority is null and t.priority is null)
-                            or priority = t.priority) and
+                           priority is not distinct from t.priority and
                            status = t.status);
 
   return query
     select distinct t.*
     from tmp_task tt inner join task t on (
-      t.type = tt.type and
-      t.arguments = tt.arguments and
-      t.status = tt.status and
-      ((t.priority is null and tt.priority is null)
-       or t.priority=tt.priority) and
-       t.policy=tt.policy
+      tt.type = t.type and
+      tt.arguments->'args' = t.arguments->'args' and
+      tt.arguments->'kwargs' = t.arguments->'kwargs' and
+      tt.policy = t.policy and
+      tt.priority is not distinct from t.priority and
+      tt.status = t.status
     );
 end;
 $$;
@@ -914,7 +914,7 @@ ALTER TABLE ONLY public.task_run ALTER COLUMN id SET DEFAULT nextval('public.tas
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-11	2018-07-31 11:54:10.392337+02	Work In Progress
+12	2018-10-10 13:29:22.932763+02	Work In Progress
 \.
 
 
@@ -950,18 +950,20 @@ COPY public.task_run (id, task, backend_id, scheduled, started, ended, metadata,
 --
 
 COPY public.task_type (type, description, backend_name, default_interval, min_interval, max_interval, backoff_factor, max_queue_length, num_retries, retry_delay) FROM stdin;
-swh-loader-mount-dump-and-load-svn-repository	Loading svn repositories from svn dump	swh.loader.svn.tasks.MountAndLoadSvnRepositoryTsk	1 day	1 day	1 day	1	1000	\N	\N
+swh-loader-mount-dump-and-load-svn-repository	Loading svn repositories from svn dump	swh.loader.svn.tasks.MountAndLoadSvnRepository	1 day	1 day	1 day	1	1000	\N	\N
 swh-deposit-archive-loading	Loading deposit archive into swh through swh-loader-tar	swh.deposit.loader.tasks.LoadDepositArchiveTsk	1 day	1 day	1 day	1	1000	3	\N
 swh-deposit-archive-checks	Pre-checking deposit step before loading into swh archive	swh.deposit.loader.tasks.ChecksDepositTsk	1 day	1 day	1 day	1	1000	3	\N
 swh-vault-cooking	Cook a Vault bundle	swh.vault.cooking_tasks.SWHCookingTask	1 day	1 day	1 day	1	10000	\N	\N
 origin-load-hg	Loading mercurial repository swh-loader-mercurial	swh.loader.mercurial.tasks.LoadMercurialTsk	1 day	1 day	1 day	1	1000	\N	\N
 origin-load-archive-hg	Loading archive mercurial repository swh-loader-mercurial	swh.loader.mercurial.tasks.LoadArchiveMercurialTsk	1 day	1 day	1 day	1	1000	\N	\N
-origin-update-git	Update an origin of type git	swh.loader.git.tasks.UpdateGitRepository	64 days	12:00:00	64 days	2	100000	\N	\N
+origin-update-git	Update an origin of type git	swh.loader.git.tasks.UpdateGitRepository	64 days	12:00:00	64 days	2	5000	\N	\N
 swh-lister-github-incremental	Incrementally list GitHub	swh.lister.github.tasks.IncrementalGitHubLister	1 day	1 day	1 day	1	\N	\N	\N
 swh-lister-github-full	Full update of GitHub repos list	swh.lister.github.tasks.FullGitHubRelister	90 days	90 days	90 days	1	\N	\N	\N
 swh-lister-debian	List a Debian distribution	swh.lister.debian.tasks.DebianListerTask	1 day	1 day	1 day	1	\N	\N	\N
 swh-lister-gitlab-incremental	Incrementally list a Gitlab instance	swh.lister.gitlab.tasks.IncrementalGitLabLister	1 day	1 day	1 day	1	\N	\N	\N
 swh-lister-gitlab-full	Full update of a Gitlab instance's repos list	swh.lister.gitlab.tasks.FullGitLabRelister	90 days	90 days	90 days	1	\N	\N	\N
+swh-lister-pypi	Full pypi lister	swh.lister.pypi.tasks.PyPIListerTask	1 day	1 day	1 day	1	\N	\N	\N
+origin-update-pypi	Load Pypi origin	swh.loader.pypi.tasks.LoadPyPI	64 days	12:00:00	64 days	2	5000	\N	\N
 \.
 
 

@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.4 (Debian 10.4-2.pgdg+1)
--- Dumped by pg_dump version 10.4 (Debian 10.4-2.pgdg+1)
+-- Dumped from database version 10.5 (Debian 10.5-1.pgdg+1)
+-- Dumped by pg_dump version 10.5 (Debian 10.5-1.pgdg+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1082,30 +1082,6 @@ $$;
 
 
 --
--- Name: occurrence; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.occurrence (
-    origin bigint NOT NULL,
-    branch bytea NOT NULL,
-    target public.sha1_git NOT NULL,
-    target_type public.object_type NOT NULL
-);
-
-
---
--- Name: swh_occurrence_by_origin_visit(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_occurrence_by_origin_visit(origin_id bigint, visit_id bigint) RETURNS SETOF public.occurrence
-    LANGUAGE sql STABLE
-    AS $$
-  select origin, branch, target, target_type from occurrence_history
-  where origin = origin_id and visit_id = ANY(visits);
-$$;
-
-
---
 -- Name: occurrence_history; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1187,54 +1163,8 @@ begin
     select origin, branch, target, target_type, ARRAY[visit]
       from occurrence_history_id_visit
       where object_id is null;
-
-  -- update occurrence
-  for origin_id in
-    select distinct origin from tmp_occurrence_history
-  loop
-    perform swh_occurrence_update_for_origin(origin_id);
-  end loop;
   return;
 end
-$$;
-
-
---
--- Name: swh_occurrence_update_all(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_occurrence_update_all() RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-declare
-  origin_id origin.id%type;
-begin
-  for origin_id in
-    select distinct id from origin
-  loop
-    perform swh_occurrence_update_for_origin(origin_id);
-  end loop;
-  return;
-end;
-$$;
-
-
---
--- Name: swh_occurrence_update_for_origin(bigint); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_occurrence_update_for_origin(origin_id bigint) RETURNS void
-    LANGUAGE sql
-    AS $$
-  delete from occurrence where origin = origin_id;
-  insert into occurrence (origin, branch, target, target_type)
-    select origin, branch, target, target_type
-    from occurrence_history
-    where origin = origin_id and
-          (select visit from origin_visit
-           where origin = origin_id
-           order by date desc
-           limit 1) = any(visits);
 $$;
 
 
@@ -1355,23 +1285,6 @@ $$;
 
 
 --
--- Name: swh_release_get_by(bigint); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_release_get_by(origin_id bigint) RETURNS SETOF public.release_entry
-    LANGUAGE sql STABLE
-    AS $$
-   select r.id, r.target, r.target_type, r.date, r.date_offset, r.date_neg_utc_offset,
-        r.name, r.comment, r.synthetic, a.id as author_id, a.fullname as author_fullname,
-        a.name as author_name, a.email as author_email, r.object_id
-    from release r
-    inner join occurrence_history occ on occ.target = r.target
-    left join person a on a.id = r.author
-    where occ.origin = origin_id and occ.target_type = 'revision' and r.target_type = 'revision';
-$$;
-
-
---
 -- Name: swh_release_list_by_object_id(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1407,23 +1320,6 @@ begin
     left join person c on c.fullname = t.committer_fullname;
     return;
 end
-$$;
-
-
---
--- Name: swh_revision_find_occurrence(public.sha1_git); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_revision_find_occurrence(revision_id public.sha1_git) RETURNS public.occurrence
-    LANGUAGE sql STABLE
-    AS $$
-	select origin, branch, target, target_type
-  from swh_revision_list_children(ARRAY[revision_id] :: bytea[]) as rev_list
-	left join occurrence_history occ_hist
-  on rev_list.id = occ_hist.target
-	where occ_hist.origin is not null and
-        occ_hist.target_type = 'revision'
-	limit 1;
 $$;
 
 
@@ -1695,7 +1591,6 @@ CREATE FUNCTION public.swh_stat_counters() RETURNS SETOF public.counter
         'directory_entry_dir',
         'directory_entry_file',
         'directory_entry_rev',
-        'occurrence',
         'occurrence_history',
         'origin',
         'origin_visit',
@@ -1705,7 +1600,8 @@ CREATE FUNCTION public.swh_stat_counters() RETURNS SETOF public.counter
         'release',
         'revision',
         'revision_history',
-        'skipped_content'
+        'skipped_content',
+        'snapshot'
     );
 $$;
 
@@ -1929,35 +1825,35 @@ COMMENT ON COLUMN public.origin_visit.origin IS 'Visited origin';
 -- Name: COLUMN origin_visit.visit; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.origin_visit.visit IS 'Visit number the visit occurred for that origin';
+COMMENT ON COLUMN public.origin_visit.visit IS 'Sequential visit number for the origin';
 
 
 --
 -- Name: COLUMN origin_visit.date; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.origin_visit.date IS 'Visit date for that origin';
+COMMENT ON COLUMN public.origin_visit.date IS 'Visit timestamp';
 
 
 --
 -- Name: COLUMN origin_visit.status; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.origin_visit.status IS 'Visit status for that origin';
+COMMENT ON COLUMN public.origin_visit.status IS 'Visit result';
 
 
 --
 -- Name: COLUMN origin_visit.metadata; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.origin_visit.metadata IS 'Metadata associated with the visit';
+COMMENT ON COLUMN public.origin_visit.metadata IS 'Origin metadata at visit time';
 
 
 --
 -- Name: COLUMN origin_visit.snapshot_id; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.origin_visit.snapshot_id IS 'id of the snapshot associated with the visit';
+COMMENT ON COLUMN public.origin_visit.snapshot_id IS 'Origin snapshot at visit time';
 
 
 --
@@ -2940,7 +2836,7 @@ COPY public.content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, 
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-119	2018-06-05 13:57:26.649524+02	Work In Progress
+123	2018-10-10 13:29:21.772849+02	Work In Progress
 \.
 
 
@@ -2981,17 +2877,17 @@ COPY public.directory_entry_rev (id, target, name, perms) FROM stdin;
 --
 
 COPY public.entity (uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, last_seen, last_id) FROM stdin;
-5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	1
-6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	2
-7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2018-06-05 13:57:26.95401+02	3
-4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	4
-5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	5
-4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	6
-aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	7
-34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	8
-e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	9
-9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	10
-ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2018-06-05 13:57:26.95401+02	11
+5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	1
+6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	2
+7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	2018-10-10 13:29:21.972524+02	3
+4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	4
+5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	5
+4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	6
+aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	7
+34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	8
+e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	9
+9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	10
+ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	2018-10-10 13:29:21.972524+02	11
 \.
 
 
@@ -3008,17 +2904,17 @@ COPY public.entity_equivalence (entity1, entity2) FROM stdin;
 --
 
 COPY public.entity_history (id, uuid, parent, name, type, description, homepage, active, generated, lister_metadata, metadata, validity) FROM stdin;
-1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
-11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2018-06-05 13:57:26.95401+02"}
+1	5f4d4c51-498a-4e28-88b3-b3e4e8396cba	\N	softwareheritage	organization	Software Heritage	http://www.softwareheritage.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+2	6577984d-64c8-4fab-b3ea-3cf63ebb8589	\N	gnu	organization	GNU is not UNIX	https://gnu.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+3	7c33636b-8f11-4bda-89d9-ba8b76a42cec	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Hosting	group_of_entities	GNU Hosting facilities	\N	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+4	4706c92a-8173-45d9-93d7-06523f249398	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU rsync mirror	hosting	GNU rsync mirror	rsync://mirror.gnu.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+5	5cb20137-c052-4097-b7e9-e1020172c48e	6577984d-64c8-4fab-b3ea-3cf63ebb8589	GNU Projects	group_of_entities	GNU Projects	https://gnu.org/software/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+6	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	\N	GitHub	organization	GitHub	https://github.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Hosting	group_of_entities	GitHub Hosting facilities	https://github.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+8	34bd6b1b-463f-43e5-a697-785107f598e4	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub git hosting	hosting	GitHub git hosting	https://github.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+9	e8c3fc2e-a932-4fd7-8f8e-c40645eb35a7	aee991a0-f8d7-4295-a201-d1ce2efc9fb2	GitHub asset hosting	hosting	GitHub asset hosting	https://github.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+10	9f7b34d9-aa98-44d4-8907-b332c1036bc3	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Organizations	group_of_entities	GitHub Organizations	https://github.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
+11	ad6df473-c1d2-4f40-bc58-2b091d4a750e	4bfb38f6-f8cd-4bc2-b256-5db689bb8da4	GitHub Users	group_of_entities	GitHub Users	https://github.org/	t	f	\N	\N	{"2018-10-10 13:29:21.972524+02"}
 \.
 
 
@@ -3068,14 +2964,6 @@ COPY public.object_counts (object_type, value, last_update, single_update) FROM 
 --
 
 COPY public.object_counts_bucketed (line, object_type, identifier, bucket_start, bucket_end, value, last_update) FROM stdin;
-\.
-
-
---
--- Data for Name: occurrence; Type: TABLE DATA; Schema: public; Owner: -
---
-
-COPY public.occurrence (origin, branch, target, target_type) FROM stdin;
 \.
 
 
@@ -3449,14 +3337,6 @@ ALTER TABLE ONLY public.object_counts
 
 ALTER TABLE ONLY public.occurrence_history
     ADD CONSTRAINT occurrence_history_pkey PRIMARY KEY (object_id);
-
-
---
--- Name: occurrence occurrence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.occurrence
-    ADD CONSTRAINT occurrence_pkey PRIMARY KEY (origin, branch);
 
 
 --
@@ -3960,14 +3840,6 @@ ALTER TABLE ONLY public.listable_entity
 
 ALTER TABLE ONLY public.occurrence_history
     ADD CONSTRAINT occurrence_history_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
-
-
---
--- Name: occurrence occurrence_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.occurrence
-    ADD CONSTRAINT occurrence_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
 
 
 --
