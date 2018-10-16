@@ -863,23 +863,6 @@ $_$;
 
 
 --
--- Name: swh_mktemp_occurrence_history(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_mktemp_occurrence_history() RETURNS void
-    LANGUAGE sql
-    AS $$
-    create temporary table tmp_occurrence_history(
-        like occurrence_history including defaults,
-        visit bigint not null
-    ) on commit drop;
-    alter table tmp_occurrence_history
-      drop column visits,
-      drop column object_id;
-$$;
-
-
---
 -- Name: swh_mktemp_release(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -945,93 +928,6 @@ CREATE FUNCTION public.swh_mktemp_tool() RETURNS void
       like tool including defaults
     ) on commit drop;
     alter table tmp_tool drop column id;
-$$;
-
-
---
--- Name: occurrence_history; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.occurrence_history (
-    origin bigint NOT NULL,
-    branch bytea NOT NULL,
-    target public.sha1_git NOT NULL,
-    target_type public.object_type NOT NULL,
-    visits bigint[] NOT NULL,
-    object_id bigint NOT NULL,
-    snapshot_branch_id bigint
-);
-
-
---
--- Name: swh_occurrence_get_by(bigint, bytea, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_occurrence_get_by(origin_id bigint, branch_name bytea DEFAULT NULL::bytea, date timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF public.occurrence_history
-    LANGUAGE plpgsql
-    AS $$
-declare
-    filters text[] := array[] :: text[];  -- AND-clauses used to filter content
-    visit_id bigint;
-    q text;
-begin
-    if origin_id is null then
-        raise exception 'Needs an origin_id to get an occurrence.';
-    end if;
-    filters := filters || format('origin = %L', origin_id);
-    if branch_name is not null then
-        filters := filters || format('branch = %L', branch_name);
-    end if;
-    if date is not null then
-        select visit from swh_visit_find_by_date(origin_id, date) into visit_id;
-    else
-        select visit from origin_visit where origin = origin_id order by origin_visit.date desc limit 1 into visit_id;
-    end if;
-    if visit_id is null then
-        return;
-    end if;
-    filters := filters || format('%L = any(visits)', visit_id);
-
-    q = format('select * from occurrence_history where %s',
-               array_to_string(filters, ' and '));
-    return query execute q;
-end
-$$;
-
-
---
--- Name: swh_occurrence_history_add(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_occurrence_history_add() RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-declare
-  origin_id origin.id%type;
-begin
-  -- Create or update occurrence_history
-  with occurrence_history_id_visit as (
-    select tmp_occurrence_history.*, object_id, visits from tmp_occurrence_history
-    left join occurrence_history using(origin, branch, target, target_type)
-  ),
-  occurrences_to_update as (
-    select object_id, visit from occurrence_history_id_visit where object_id is not null
-  ),
-  update_occurrences as (
-    update occurrence_history
-    set visits = array(select unnest(occurrence_history.visits) as e
-                        union
-                       select occurrences_to_update.visit as e
-                       order by e)
-    from occurrences_to_update
-    where occurrence_history.object_id = occurrences_to_update.object_id
-  )
-  insert into occurrence_history (origin, branch, target, target_type, visits)
-    select origin, branch, target, target_type, ARRAY[visit]
-      from occurrence_history_id_visit
-      where object_id is null;
-  return;
-end
 $$;
 
 
@@ -1187,29 +1083,6 @@ begin
     left join person c on c.fullname = t.committer_fullname;
     return;
 end
-$$;
-
-
---
--- Name: swh_revision_get_by(bigint, bytea, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.swh_revision_get_by(origin_id bigint, branch_name bytea DEFAULT NULL::bytea, date timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS SETOF public.revision_entry
-    LANGUAGE sql STABLE
-    AS $$
-    select r.id, r.date, r.date_offset, r.date_neg_utc_offset,
-        r.committer_date, r.committer_date_offset, r.committer_date_neg_utc_offset,
-        r.type, r.directory, r.message,
-        a.id, a.fullname, a.name, a.email, c.id, c.fullname, c.name, c.email, r.metadata, r.synthetic,
-        array(select rh.parent_id::bytea
-            from revision_history rh
-            where rh.id = r.id
-            order by rh.parent_rank
-        ) as parents, r.object_id
-    from swh_occurrence_get_by(origin_id, branch_name, date) as occ
-    inner join revision r on occ.target = r.id
-    left join person a on a.id = r.author
-    left join person c on c.id = r.committer;
 $$;
 
 
@@ -1474,7 +1347,6 @@ CREATE FUNCTION public.swh_stat_counters() RETURNS SETOF public.counter
         'directory_entry_dir',
         'directory_entry_file',
         'directory_entry_rev',
-        'occurrence_history',
         'origin',
         'origin_visit',
         'person',
@@ -2049,25 +1921,6 @@ ALTER SEQUENCE public.object_counts_bucketed_line_seq OWNED BY public.object_cou
 
 
 --
--- Name: occurrence_history_object_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.occurrence_history_object_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: occurrence_history_object_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.occurrence_history_object_id_seq OWNED BY public.occurrence_history.object_id;
-
-
---
 -- Name: origin; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2487,13 +2340,6 @@ ALTER TABLE ONLY public.object_counts_bucketed ALTER COLUMN line SET DEFAULT nex
 
 
 --
--- Name: occurrence_history object_id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.occurrence_history ALTER COLUMN object_id SET DEFAULT nextval('public.occurrence_history_object_id_seq'::regclass);
-
-
---
 -- Name: origin id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2569,7 +2415,7 @@ COPY public.content (sha1, sha1_git, sha256, blake2s256, length, ctime, status, 
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-125	2018-10-12 13:58:23.920253+02	Work In Progress
+127	2018-10-16 12:20:28.082313+02	Work In Progress
 \.
 
 
@@ -2634,14 +2480,6 @@ COPY public.object_counts (object_type, value, last_update, single_update) FROM 
 --
 
 COPY public.object_counts_bucketed (line, object_type, identifier, bucket_start, bucket_end, value, last_update) FROM stdin;
-\.
-
-
---
--- Data for Name: occurrence_history; Type: TABLE DATA; Schema: public; Owner: -
---
-
-COPY public.occurrence_history (origin, branch, target, target_type, visits, object_id, snapshot_branch_id) FROM stdin;
 \.
 
 
@@ -2798,13 +2636,6 @@ SELECT pg_catalog.setval('public.object_counts_bucketed_line_seq', 1, false);
 
 
 --
--- Name: occurrence_history_object_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('public.occurrence_history_object_id_seq', 1, false);
-
-
---
 -- Name: origin_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
@@ -2945,14 +2776,6 @@ ALTER TABLE ONLY public.object_counts_bucketed
 
 ALTER TABLE ONLY public.object_counts
     ADD CONSTRAINT object_counts_pkey PRIMARY KEY (object_type);
-
-
---
--- Name: occurrence_history occurrence_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.occurrence_history
-    ADD CONSTRAINT occurrence_history_pkey PRIMARY KEY (object_id);
 
 
 --
@@ -3140,27 +2963,6 @@ CREATE INDEX directory_rev_entries_idx ON public.directory USING gin (rev_entrie
 --
 
 CREATE INDEX metadata_provider_provider_name_provider_url_idx ON public.metadata_provider USING btree (provider_name, provider_url);
-
-
---
--- Name: occurrence_history_origin_branch_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX occurrence_history_origin_branch_idx ON public.occurrence_history USING btree (origin, branch);
-
-
---
--- Name: occurrence_history_origin_branch_target_target_type_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX occurrence_history_origin_branch_target_target_type_idx ON public.occurrence_history USING btree (origin, branch, target, target_type);
-
-
---
--- Name: occurrence_history_target_target_type_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX occurrence_history_target_target_type_idx ON public.occurrence_history USING btree (target, target_type);
 
 
 --
@@ -3365,14 +3167,6 @@ CREATE TRIGGER update_counts_from_bucketed AFTER INSERT OR UPDATE ON public.obje
 
 ALTER TABLE ONLY public.fetch_history
     ADD CONSTRAINT fetch_history_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
-
-
---
--- Name: occurrence_history occurrence_history_origin_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.occurrence_history
-    ADD CONSTRAINT occurrence_history_origin_fkey FOREIGN KEY (origin) REFERENCES public.origin(id);
 
 
 --

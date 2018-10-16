@@ -914,7 +914,7 @@ ALTER TABLE ONLY public.task_run ALTER COLUMN id SET DEFAULT nextval('public.tas
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-12	2018-10-10 13:29:22.932763+02	Work In Progress
+12	2018-10-16 12:20:29.011363+02	Work In Progress
 \.
 
 

@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.4 (Debian 10.4-2)
--- Dumped by pg_dump version 10.4 (Debian 10.4-2)
+-- Dumped from database version 10.5 (Debian 10.5-1.pgdg+1)
+-- Dumped by pg_dump version 10.5 (Debian 10.5-1.pgdg+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1567,7 +1567,7 @@ COPY public.content_mimetype (id, mimetype, encoding, indexer_configuration_id) 
 --
 
 COPY public.dbversion (version, release, description) FROM stdin;
-115	2018-06-22 18:02:38.144382+02	Work In Progress
+115	2018-10-16 12:20:29.588774+02	Work In Progress
 \.
 
 
